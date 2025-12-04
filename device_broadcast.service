@@ -1,0 +1,29 @@
+[Unit]
+Description=Axera Device Broadcast Service
+# 只有在网络准备好之后才启动
+After=network.target
+
+[Service]
+Type=simple
+# 【重要】如果你的程序依赖 Axera 的动态库 (如 libax_interpreter.so)
+# 必须设置 LD_LIBRARY_PATH，指向板子上的库路径 (通常是 /usr/lib 或 /opt/lib)
+# Environment="LD_LIBRARY_PATH=/usr/lib:/usr/local/lib"
+
+# 程序安装后的路径
+ExecStart=/usr/local/bin/device_broadcast
+
+# 总是自动重启（防止程序意外崩溃）
+Restart=always
+# 崩溃后等待 5 秒再重启
+RestartSec=5
+
+# 运行用户 (通常嵌入式板子直接用 root)
+User=root
+Group=root
+
+# 日志输出配置
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
