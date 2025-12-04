@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# S90device_broadcast
+#
+
+PROG=/usr/bin/device_broadcast
+PROG_NAME=device_broadcast
+
+# 检查程序是否存在
+[ -f $PROG ] || exit 0
+
+start() {
+    printf "Starting $PROG_NAME: "
+    
+    # 1. 检查是否已经在运行，避免重复启动
+    if pidof $PROG_NAME >/dev/null; then
+        echo "Already running"
+        return
+    fi
+
+    # 2. 使用 nohup 启动
+    # >/dev/null 2>&1 : 丢弃所有输出（包括错误信息），防止占满磁盘或卡住 Shell
+    # & : 放入后台运行
+    nohup $PROG >/dev/null 2>&1 &
+    
+    # 3. 等待 1 秒让它初始化
+    sleep 1
+    
+    # 4. 检查是否成功启动
+    if pidof $PROG_NAME >/dev/null; then
+        echo "OK"
+    else
+        echo "Failed"
+    fi
+}
+
+stop() {
+    printf "Stopping $PROG_NAME: "
+    # 直接杀掉所有叫 device_broadcast 的进程
+    killall -q $PROG_NAME
+    echo "OK"
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+case "$1" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  restart|reload)
+    restart
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+esac
+
+exit $?

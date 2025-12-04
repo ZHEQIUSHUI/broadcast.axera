@@ -10,7 +10,7 @@ Type=simple
 # Environment="LD_LIBRARY_PATH=/usr/lib:/usr/local/lib"
 
 # 程序安装后的路径
-ExecStart=/usr/local/bin/device_broadcast
+ExecStart=/usr/bin/device_broadcast
 
 # 总是自动重启（防止程序意外崩溃）
 Restart=always
