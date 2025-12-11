@@ -62,6 +62,21 @@ HTML_TEMPLATE = """
         }
         .copy-icon { width: 12px; height: 12px; fill: currentColor; }
         
+        .open-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        .open-icon {
+            width: 18px;
+            height: 18px;
+            fill: #2196F3;
+        }
+        .open-btn:hover .open-icon {
+            fill: #0b7dda;
+        }
+        
         /* 提示框 (Toast) */
         #toast {
             visibility: hidden;
@@ -125,6 +140,11 @@ HTML_TEMPLATE = """
                     <button class="copy-btn" onclick="copyText('{{ ip }}')" title="复制IP">
                         <svg class="copy-icon" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
                     </button>
+                    <button class="open-btn" onclick="openSSH('{{ ip }}')" title="打开SSH">
+                        <svg viewBox="0 0 24 24" class="open-icon">
+                            <path d="M10 17l5-5-5-5v10z"/>
+                        </svg>
+                    </button>
                 </td>
 
                 <td>{{ dev.board_id }}</td>
@@ -172,6 +192,11 @@ HTML_TEMPLATE = """
                 // 降级处理 (针对没有HTTPS或旧浏览器)
                 fallbackCopyText(text);
             }
+        }
+        
+        function openSSH(ip) {
+            let url = `http://10.126.33.124:2222/ssh/host/${ip}`;
+            window.open(url, "_blank");
         }
 
         function fallbackCopyText(text) {

@@ -1,3 +1,4 @@
 device_broadcast
+device_broadcast_uclibc
 build*/
 .vscode/

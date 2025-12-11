@@ -18,6 +18,7 @@ g++ -o device_broadcast device_broadcast.cpp
 ### 交叉编译
 ```
 aarch64-none-linux-gnu-g++ -o device_broadcast device_broadcast.cpp
+arm-AX620E-linux-uclibcgnueabihf-g++ -o device_broadcast_uclibc device_broadcast.cpp
 ```
 
 ## 运行
