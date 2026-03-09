@@ -1,0 +1,2593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Broadcast Device Dashboard</title>
+    <style>
+        :root {
+            --bg: #efebe2;
+            --panel: rgba(255, 251, 244, 0.94);
+            --panel-strong: #fffaf2;
+            --ink: #1d2730;
+            --muted: #60707c;
+            --line: rgba(29, 39, 48, 0.12);
+            --accent: #0f766e;
+            --accent-soft: rgba(15, 118, 110, 0.12);
+            --warn: #c37a22;
+            --danger: #bb4432;
+            --shadow: 0 16px 36px rgba(20, 28, 34, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            min-width: 0;
+        }
+
+        body {
+            margin: 0;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.14), transparent 28%),
+                radial-gradient(circle at top right, rgba(195, 122, 34, 0.12), transparent 22%),
+                linear-gradient(180deg, #f7f3ea 0%, #ece4d5 100%);
+            font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+            min-height: 100vh;
+        }
+
+        .shell {
+            width: min(1520px, calc(100vw - 24px));
+            margin: 0 auto;
+            padding: 20px 0 30px;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: 1.4fr 0.9fr;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+
+        .hero-card,
+        .summary-card,
+        .device-card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+        }
+
+        .hero-card {
+            padding: 18px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-card::after {
+            content: "";
+            position: absolute;
+            right: -4%;
+            bottom: -42%;
+            width: 220px;
+            height: 220px;
+            background: radial-gradient(circle, rgba(15, 118, 110, 0.12), transparent 66%);
+            pointer-events: none;
+        }
+
+        .eyebrow {
+            margin-bottom: 8px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            color: var(--muted);
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: clamp(24px, 3vw, 42px);
+            line-height: 1;
+            font-family: "IBM Plex Serif", "Noto Serif SC", serif;
+        }
+
+        .hero-copy {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.5;
+            max-width: 54rem;
+            font-size: 14px;
+        }
+
+        .hero-meta,
+        .type-strip,
+        .device-tags,
+        .info-row,
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .hero-meta {
+            margin-top: 14px;
+        }
+
+        .pill,
+        .tag,
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: var(--panel-strong);
+            font-size: 12px;
+            line-height: 1.2;
+        }
+
+        .pill strong,
+        .tag strong {
+            font-size: 13px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .summary-card {
+            padding: 14px 16px;
+        }
+
+        .summary-card h3 {
+            margin: 0 0 8px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--muted);
+        }
+
+        .summary-value {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+            font-family: "IBM Plex Mono", monospace;
+        }
+
+        .summary-note {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .type-strip {
+            margin-bottom: 14px;
+        }
+
+        .batch-bar {
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .batch-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .devices-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 12px;
+        }
+
+        .device-card {
+            padding: 14px;
+            display: grid;
+            gap: 12px;
+            overflow: hidden;
+        }
+
+        .device-top {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: start;
+        }
+
+        .device-aside {
+            display: grid;
+            justify-items: end;
+            gap: 8px;
+        }
+
+        .device-title {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .device-title h2 {
+            margin: 0;
+            font-size: 20px;
+            line-height: 1.06;
+            overflow-wrap: anywhere;
+        }
+
+        .device-subtitle {
+            color: var(--muted);
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            font-size: 12px;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .status::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .device-select {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .device-select input {
+            margin: 0;
+        }
+
+        .info-row {
+            align-items: center;
+        }
+
+        .chip {
+            max-width: 100%;
+            color: var(--muted);
+        }
+
+        .chip strong {
+            color: var(--ink);
+            font-weight: 600;
+            overflow-wrap: anywhere;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .metric {
+            border-radius: 16px;
+            border: 1px solid rgba(29, 39, 48, 0.09);
+            background: rgba(255, 255, 255, 0.7);
+            padding: 10px 11px;
+            display: grid;
+            gap: 7px;
+            overflow: hidden;
+        }
+
+        .metric-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 6px;
+            align-items: baseline;
+        }
+
+        .metric-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--muted);
+        }
+
+        .metric-value {
+            font-size: 18px;
+            font-weight: 700;
+            font-family: "IBM Plex Mono", monospace;
+            white-space: nowrap;
+        }
+
+        .meter {
+            height: 8px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(29, 39, 48, 0.08);
+        }
+
+        .meter > span {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--accent), #1d9e94);
+        }
+
+        .meter.warn > span {
+            background: linear-gradient(90deg, #d58929, #f2ae3a);
+        }
+
+        .meter.danger > span {
+            background: linear-gradient(90deg, #bb4432, #e46751);
+        }
+
+        .metric-note {
+            min-height: 16px;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+
+        .sparkline {
+            width: 100%;
+            height: 24px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .detail {
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.65);
+            border: 1px solid rgba(29, 39, 48, 0.07);
+            overflow: hidden;
+        }
+
+        .detail-label {
+            margin-bottom: 4px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--muted);
+        }
+
+        .detail-value {
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        button,
+        input,
+        select {
+            font: inherit;
+        }
+
+        button {
+            border: none;
+            border-radius: 12px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: transform 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 18px rgba(20, 28, 34, 0.08);
+        }
+
+        button:disabled {
+            opacity: 0.55;
+            cursor: default;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: rgba(29, 39, 48, 0.08);
+            color: var(--ink);
+        }
+
+        .btn-danger {
+            background: #bb4432;
+            color: #fff;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--muted);
+            border: 1px solid rgba(29, 39, 48, 0.14);
+        }
+
+        .saved-badge {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .empty {
+            padding: 40px 24px;
+            text-align: center;
+            color: var(--muted);
+            border-radius: 20px;
+            border: 1px dashed rgba(29, 39, 48, 0.18);
+            background: rgba(255, 250, 241, 0.74);
+        }
+
+        .toast {
+            position: fixed;
+            left: 50%;
+            bottom: 22px;
+            transform: translateX(-50%) translateY(16px);
+            background: rgba(29, 39, 48, 0.94);
+            color: white;
+            border-radius: 999px;
+            padding: 9px 14px;
+            font-size: 13px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+            z-index: 120;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .detail-modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+            background: rgba(16, 22, 26, 0.34);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+        }
+
+        .detail-modal.open {
+            display: flex;
+        }
+
+        .detail-shell {
+            width: min(980px, 100%);
+            max-height: min(86vh, 860px);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 22px;
+            box-shadow: 0 22px 60px rgba(0, 0, 0, 0.16);
+            display: grid;
+            grid-template-rows: auto auto 1fr;
+            overflow: hidden;
+        }
+
+        .detail-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 10px;
+            padding: 16px 18px 12px;
+            border-bottom: 1px solid rgba(29, 39, 48, 0.08);
+        }
+
+        .detail-top h3 {
+            margin: 0 0 4px;
+            font-size: 22px;
+            line-height: 1.06;
+            overflow-wrap: anywhere;
+        }
+
+        .detail-top p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+            overflow-wrap: anywhere;
+        }
+
+        .detail-summary {
+            padding: 0 18px 14px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .detail-body {
+            padding: 0 18px 18px;
+            overflow: auto;
+        }
+
+        .update-modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+            background: rgba(16, 22, 26, 0.38);
+            backdrop-filter: blur(5px);
+            z-index: 105;
+        }
+
+        .update-modal.open {
+            display: flex;
+        }
+
+        .update-shell {
+            width: min(1180px, 100%);
+            max-height: min(90vh, 980px);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 22px;
+            box-shadow: 0 24px 64px rgba(20, 28, 34, 0.16);
+            display: grid;
+            grid-template-rows: auto 1fr;
+            overflow: hidden;
+        }
+
+        .update-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 12px;
+            padding: 16px 18px 12px;
+            border-bottom: 1px solid rgba(29, 39, 48, 0.08);
+        }
+
+        .update-top h3 {
+            margin: 0 0 4px;
+            font-size: 22px;
+            line-height: 1.08;
+        }
+
+        .update-top p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .update-body {
+            padding: 16px 18px 18px;
+            overflow: auto;
+            display: grid;
+            gap: 14px;
+        }
+
+        .update-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .update-card {
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid rgba(29, 39, 48, 0.08);
+            background: rgba(255, 255, 255, 0.68);
+            display: grid;
+            gap: 12px;
+        }
+
+        .update-card h4 {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .update-form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .update-inline {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .update-card label,
+        .update-card .remember {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .update-card label {
+            display: grid;
+            gap: 5px;
+        }
+
+        .update-card input,
+        .update-card select {
+            width: 100%;
+            padding: 9px 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(29, 39, 48, 0.12);
+            background: rgba(255, 255, 255, 0.88);
+            color: var(--ink);
+        }
+
+        .update-targets {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .update-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .status-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(29, 39, 48, 0.08);
+            color: var(--ink);
+        }
+
+        .status-chip.running,
+        .status-chip.success {
+            background: rgba(15, 118, 110, 0.12);
+            color: var(--accent);
+        }
+
+        .status-chip.failed {
+            background: rgba(187, 68, 50, 0.12);
+            color: var(--danger);
+        }
+
+        .status-chip.partial {
+            background: rgba(195, 122, 34, 0.14);
+            color: var(--warn);
+        }
+
+        .update-results {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .update-result {
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid rgba(29, 39, 48, 0.08);
+            background: rgba(255, 255, 255, 0.68);
+            display: grid;
+            gap: 10px;
+        }
+
+        .update-result-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: start;
+        }
+
+        .update-result-title {
+            display: grid;
+            gap: 4px;
+        }
+
+        .update-result-title strong,
+        .update-result-title span {
+            overflow-wrap: anywhere;
+        }
+
+        .update-result-title span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .update-result-note {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        .attempt-strip {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .attempt {
+            padding: 5px 8px;
+            border-radius: 999px;
+            background: rgba(29, 39, 48, 0.08);
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .attempt.ok {
+            background: rgba(15, 118, 110, 0.12);
+            color: var(--accent);
+        }
+
+        .attempt.fail {
+            background: rgba(187, 68, 50, 0.12);
+            color: var(--danger);
+        }
+
+        .update-log {
+            margin: 0;
+            max-height: 220px;
+            overflow: auto;
+            padding: 12px;
+            border-radius: 14px;
+            background: #11191b;
+            color: #d4e5e5;
+            font: 12px/1.45 "IBM Plex Mono", monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .terminal-modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+            background: rgba(16, 22, 26, 0.46);
+            backdrop-filter: blur(6px);
+            z-index: 110;
+        }
+
+        .terminal-modal.open {
+            display: flex;
+        }
+
+        .terminal-shell {
+            width: min(1180px, 100%);
+            height: min(88vh, 900px);
+            background: #101516;
+            color: #d4e5e5;
+            border-radius: 24px;
+            overflow: hidden;
+            display: grid;
+            grid-template-rows: auto auto auto 1fr auto;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+        }
+
+        .terminal-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .terminal-title {
+            display: grid;
+            gap: 3px;
+            min-width: 0;
+        }
+
+        .terminal-title strong {
+            font-size: 16px;
+            overflow-wrap: anywhere;
+        }
+
+        .terminal-title span {
+            color: rgba(212, 229, 229, 0.72);
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+
+        .terminal-toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .terminal-toolbar button {
+            padding: 7px 10px;
+            border-radius: 10px;
+        }
+
+        .terminal-connect {
+            display: grid;
+            gap: 10px;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .terminal-connect-row {
+            display: grid;
+            grid-template-columns: 220px minmax(0, 1fr);
+            gap: 10px;
+            align-items: end;
+        }
+
+        .terminal-mode-note {
+            padding: 9px 12px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(212, 229, 229, 0.72);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .terminal-auth-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(180px, 1fr);
+            gap: 10px;
+        }
+
+        .terminal-auth-grid.hidden {
+            display: none;
+        }
+
+        .terminal-connect label {
+            display: grid;
+            gap: 5px;
+            font-size: 12px;
+            color: rgba(212, 229, 229, 0.72);
+        }
+
+        .terminal-connect input,
+        .terminal-connect select {
+            width: 100%;
+            padding: 9px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            color: white;
+        }
+
+        .terminal-connect-actions {
+            display: flex;
+            align-items: end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .remember {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: rgba(212, 229, 229, 0.74);
+            font-size: 12px;
+        }
+
+        .remember input {
+            width: auto;
+        }
+
+        .terminal-status {
+            min-height: 20px;
+            padding: 8px 16px 0;
+            color: rgba(212, 229, 229, 0.74);
+            font-size: 12px;
+        }
+
+        .terminal-status.hidden,
+        .terminal-output.hidden,
+        .terminal-hint.hidden,
+        .terminal-webssh.hidden {
+            display: none;
+        }
+
+        .terminal-output {
+            margin: 0;
+            padding: 14px 16px 20px;
+            overflow: auto;
+            font: 13px/1.45 "IBM Plex Mono", monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+            outline: none;
+        }
+
+        .terminal-output:focus {
+            box-shadow: inset 0 0 0 1px rgba(79, 214, 201, 0.35);
+        }
+
+        .terminal-hint {
+            padding: 10px 16px 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            background: rgba(255, 255, 255, 0.03);
+            color: rgba(212, 229, 229, 0.62);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .terminal-webssh {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            min-height: 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .terminal-webssh-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            color: rgba(212, 229, 229, 0.74);
+            font-size: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .terminal-webssh-bar span {
+            overflow-wrap: anywhere;
+        }
+
+        .terminal-launcher {
+            padding: 18px 16px 20px;
+            display: grid;
+            gap: 14px;
+            align-content: start;
+            background: #0c1112;
+        }
+
+        .terminal-launcher p {
+            margin: 0;
+            color: rgba(212, 229, 229, 0.78);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .terminal-launcher-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .terminal-url {
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: rgba(212, 229, 229, 0.7);
+            font: 12px/1.45 "IBM Plex Mono", monospace;
+            overflow-wrap: anywhere;
+        }
+
+        @media (max-width: 1080px) {
+            .hero {
+                grid-template-columns: 1fr;
+            }
+
+            .update-grid,
+            .update-results,
+            .terminal-connect-row,
+            .terminal-auth-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 760px) {
+            .shell {
+                width: min(calc(100vw - 14px), 1520px);
+                padding-top: 14px;
+            }
+
+            .summary-grid,
+            .metrics-grid,
+            .detail-grid,
+            .update-grid,
+            .update-form-grid,
+            .update-results,
+            .terminal-connect-row,
+            .terminal-auth-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .devices-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .batch-bar,
+            .update-top {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .terminal-shell {
+                height: min(92vh, 980px);
+            }
+
+            .terminal-top {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <section class="hero">
+            <div class="hero-card">
+                <div class="eyebrow">Broadcast Dashboard</div>
+                <h1>通用 Linux 设备管理面板</h1>
+                <p class="hero-copy">
+                    自动识别 AX、树莓派和 x86/Linux 主机，动态展示 CPU、工作集内存、显存和 AX CMM 指标。终端支持 SSH/Telnet，本地浏览器记住密码，不在服务端落盘。
+                </p>
+                <div class="hero-meta">
+                    <div class="pill">监听 <strong>UDP 9999</strong></div>
+                    <div class="pill">面板 <strong id="dashboard-port">25000</strong></div>
+                    <div class="pill">终端 <strong>SSH / Telnet</strong></div>
+                    <div class="pill">更新 <strong>可扩展批量发布</strong></div>
+                </div>
+            </div>
+            <div class="summary-grid" id="summary-grid"></div>
+        </section>
+
+        <section class="type-strip" id="type-strip"></section>
+        <section class="batch-bar">
+            <div class="hero-meta">
+                <div class="pill">已选 <strong id="selected-count">0</strong></div>
+                <div class="pill">群发更新 <strong>SSH / Telnet / install.sh</strong></div>
+            </div>
+            <div class="batch-actions">
+                <button class="btn-secondary" id="btn-select-all">全选在线设备</button>
+                <button class="btn-secondary" id="btn-clear-selection">清空选择</button>
+                <button class="btn-primary" id="btn-open-update">群发更新</button>
+            </div>
+        </section>
+        <section class="devices-grid" id="devices-grid"></section>
+    </div>
+
+    <div class="terminal-modal" id="terminal-modal">
+        <div class="terminal-shell">
+            <div class="terminal-top">
+                <div class="terminal-title">
+                    <strong id="terminal-heading">Terminal</strong>
+                    <span id="terminal-subheading">等待连接</span>
+                </div>
+                <div class="terminal-toolbar">
+                    <button class="btn-ghost" id="btn-ctrl-c">Ctrl+C</button>
+                    <button class="btn-ghost" id="btn-ctrl-d">Ctrl+D</button>
+                    <button class="btn-ghost" id="btn-clear-view">清空窗口</button>
+                    <button class="btn-danger" id="btn-terminal-close">关闭终端</button>
+                </div>
+            </div>
+
+            <div class="terminal-connect" id="terminal-connect">
+                <div class="terminal-connect-row">
+                    <label>
+                        协议
+                        <select id="terminal-protocol">
+                            <option value="ssh">SSH</option>
+                            <option value="telnet">Telnet</option>
+                        </select>
+                    </label>
+                    <div class="terminal-mode-note" id="terminal-mode-note">
+                        SSH 默认走 webssh2 新窗口。切换到 Telnet 后，才会使用当前页面内置终端。
+                    </div>
+                </div>
+                <div class="terminal-auth-grid hidden" id="terminal-auth-grid">
+                    <label>
+                        用户名
+                        <input id="terminal-user" placeholder="root">
+                    </label>
+                    <label>
+                        密码
+                        <input id="terminal-password" type="password" placeholder="按需填写">
+                    </label>
+                    <label>
+                        端口
+                        <input id="terminal-port" type="number" value="22">
+                    </label>
+                    <div class="terminal-connect-actions">
+                        <label class="remember">
+                            <input id="terminal-remember" type="checkbox" checked>
+                            记住密码（当前浏览器）
+                        </label>
+                        <button class="btn-primary" id="btn-terminal-connect">连接</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="terminal-status" id="terminal-status"></div>
+            <div class="terminal-webssh hidden" id="terminal-webssh">
+                <div class="terminal-webssh-bar">
+                    <span id="terminal-webssh-label">SSH 通过 webssh2 新窗口打开</span>
+                    <button class="btn-secondary" id="btn-webssh-open">进入 SSH</button>
+                </div>
+                <div class="terminal-launcher">
+                    <p>webssh2 不再嵌入当前页面。进入终端页后，请手动点击下面按钮进入 SSH；Telnet 仍然使用当前页面内置终端。</p>
+                    <div class="terminal-launcher-actions">
+                        <button class="btn-primary" id="btn-webssh-open-main">进入 SSH 窗口</button>
+                        <button class="btn-secondary" id="btn-webssh-copy">复制地址</button>
+                    </div>
+                    <div class="terminal-url" id="terminal-webssh-url"></div>
+                </div>
+            </div>
+            <pre class="terminal-output" id="terminal-output" tabindex="0"></pre>
+            <div class="terminal-hint">
+                SSH 走 webssh2 新窗口。Telnet 继续使用内置终端，支持长轮询和输入批量发送；Telnet 会尝试自动识别常见 `login:` / `password:` 提示并自动填入。
+            </div>
+        </div>
+    </div>
+
+    <div class="detail-modal" id="detail-modal">
+        <div class="detail-shell">
+            <div class="detail-top">
+                <div>
+                    <h3 id="detail-heading">设备详情</h3>
+                    <p id="detail-subheading">等待选择设备</p>
+                </div>
+                <button class="btn-secondary" id="btn-detail-close">关闭</button>
+            </div>
+            <div class="detail-summary" id="detail-summary"></div>
+            <div class="detail-body">
+                <div class="detail-grid" id="detail-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="update-modal" id="update-modal">
+        <div class="update-shell">
+            <div class="update-top">
+                <div>
+                    <h3 id="update-heading">群发更新</h3>
+                    <p id="update-subheading">使用当前 Dashboard 主机生成最新更新包，并批量下发到所选设备。</p>
+                </div>
+                <button class="btn-secondary" id="btn-update-close">关闭</button>
+            </div>
+            <div class="update-body">
+                <div class="update-grid">
+                    <div class="update-card">
+                        <h4>更新策略</h4>
+                        <div class="update-form-grid">
+                            <label>
+                                传输方式
+                                <select id="update-strategy">
+                                    <option value="auto">自动: 先 SSH 后 Telnet</option>
+                                    <option value="ssh">只用 SSH</option>
+                                    <option value="telnet">只用 Telnet</option>
+                                </select>
+                            </label>
+                            <label>
+                                并发数
+                                <input id="update-parallelism" type="number" min="1" max="{{ update_max_parallel }}" value="2">
+                            </label>
+                        </div>
+                        <div class="update-inline">
+                            <label class="remember">
+                                <input id="update-remember" type="checkbox" checked>
+                                记住本页更新凭据（当前浏览器）
+                            </label>
+                            <label class="remember">
+                                <input id="update-use-sudo" type="checkbox" checked>
+                                非 root 时尝试 sudo 安装
+                            </label>
+                        </div>
+                        <label>
+                            sudo 密码
+                            <input id="update-sudo-password" type="password" placeholder="留空则默认使用登录密码">
+                        </label>
+                    </div>
+                    <div class="update-card">
+                        <h4>目标设备</h4>
+                        <div class="update-targets" id="update-targets"></div>
+                        <div class="update-status" id="update-status">尚未启动更新任务。</div>
+                        <div class="update-inline">
+                            <button class="btn-primary" id="btn-update-start">开始更新</button>
+                            <button class="btn-secondary" id="btn-update-refresh">刷新结果</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="update-grid">
+                    <div class="update-card">
+                        <h4>SSH</h4>
+                        <div class="update-form-grid">
+                            <label>
+                                用户名
+                                <input id="update-ssh-user" placeholder="默认使用设备上报用户">
+                            </label>
+                            <label>
+                                端口
+                                <input id="update-ssh-port" type="number" value="22">
+                            </label>
+                            <label>
+                                密码
+                                <input id="update-ssh-password" type="password" placeholder="留空则尝试本机 SSH key/agent">
+                            </label>
+                        </div>
+                    </div>
+                    <div class="update-card">
+                        <h4>Telnet</h4>
+                        <div class="update-form-grid">
+                            <label>
+                                用户名
+                                <input id="update-telnet-user" placeholder="可留空">
+                            </label>
+                            <label>
+                                端口
+                                <input id="update-telnet-port" type="number" value="23">
+                            </label>
+                            <label>
+                                密码
+                                <input id="update-telnet-password" type="password" placeholder="按需填写">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="update-card">
+                    <h4>任务结果</h4>
+                    <div class="update-results" id="update-results"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const WEBSSH2_ENABLED = {{ 'true' if webssh2_enabled else 'false' }};
+        const WEBSSH2_URL_TEMPLATE = {{ webssh2_url_template|tojson }};
+        const UPDATE_MAX_PARALLEL = {{ update_max_parallel|int }};
+
+        const state = {
+            devices: [],
+            selectedDevices: new Set(),
+            currentDevice: null,
+            detailDeviceIp: null,
+            sessionId: null,
+            cursor: 0,
+            pendingInput: '',
+            inputFlushTimer: null,
+            resizeTimer: null,
+            pollToken: 0,
+            activeProtocol: 'ssh',
+            currentWebsshUrl: '',
+            pendingWebsshWindow: null,
+            updateJobId: null,
+            updatePollTimer: null,
+        };
+
+        const LOCAL_CREDENTIALS_KEY = 'broadcast.axera.local_terminal_credentials.v2';
+        const LOCAL_UPDATE_PROFILE_KEY = 'broadcast.axera.batch_update_profile.v1';
+
+        const elements = {
+            summaryGrid: document.getElementById('summary-grid'),
+            typeStrip: document.getElementById('type-strip'),
+            devicesGrid: document.getElementById('devices-grid'),
+            selectedCount: document.getElementById('selected-count'),
+            toast: document.getElementById('toast'),
+            detailModal: document.getElementById('detail-modal'),
+            detailHeading: document.getElementById('detail-heading'),
+            detailSubheading: document.getElementById('detail-subheading'),
+            detailSummary: document.getElementById('detail-summary'),
+            detailGrid: document.getElementById('detail-grid'),
+            updateModal: document.getElementById('update-modal'),
+            updateHeading: document.getElementById('update-heading'),
+            updateSubheading: document.getElementById('update-subheading'),
+            updateTargets: document.getElementById('update-targets'),
+            updateStatus: document.getElementById('update-status'),
+            updateResults: document.getElementById('update-results'),
+            updateStrategy: document.getElementById('update-strategy'),
+            updateParallelism: document.getElementById('update-parallelism'),
+            updateRemember: document.getElementById('update-remember'),
+            updateUseSudo: document.getElementById('update-use-sudo'),
+            updateSudoPassword: document.getElementById('update-sudo-password'),
+            updateSshUser: document.getElementById('update-ssh-user'),
+            updateSshPort: document.getElementById('update-ssh-port'),
+            updateSshPassword: document.getElementById('update-ssh-password'),
+            updateTelnetUser: document.getElementById('update-telnet-user'),
+            updateTelnetPort: document.getElementById('update-telnet-port'),
+            updateTelnetPassword: document.getElementById('update-telnet-password'),
+            btnSelectAll: document.getElementById('btn-select-all'),
+            btnClearSelection: document.getElementById('btn-clear-selection'),
+            btnOpenUpdate: document.getElementById('btn-open-update'),
+            btnUpdateClose: document.getElementById('btn-update-close'),
+            btnUpdateStart: document.getElementById('btn-update-start'),
+            btnUpdateRefresh: document.getElementById('btn-update-refresh'),
+            modal: document.getElementById('terminal-modal'),
+            terminalHeading: document.getElementById('terminal-heading'),
+            terminalSubheading: document.getElementById('terminal-subheading'),
+            terminalConnect: document.getElementById('terminal-connect'),
+            terminalAuthGrid: document.getElementById('terminal-auth-grid'),
+            terminalModeNote: document.getElementById('terminal-mode-note'),
+            terminalStatus: document.getElementById('terminal-status'),
+            terminalWebssh: document.getElementById('terminal-webssh'),
+            terminalWebsshLabel: document.getElementById('terminal-webssh-label'),
+            terminalWebsshUrl: document.getElementById('terminal-webssh-url'),
+            terminalOutput: document.getElementById('terminal-output'),
+            terminalHint: document.querySelector('.terminal-hint'),
+            terminalProtocol: document.getElementById('terminal-protocol'),
+            terminalUser: document.getElementById('terminal-user'),
+            terminalPassword: document.getElementById('terminal-password'),
+            terminalPort: document.getElementById('terminal-port'),
+            terminalRemember: document.getElementById('terminal-remember'),
+            btnCtrlC: document.getElementById('btn-ctrl-c'),
+            btnCtrlD: document.getElementById('btn-ctrl-d'),
+            btnClearView: document.getElementById('btn-clear-view'),
+            btnWebsshOpen: document.getElementById('btn-webssh-open'),
+            btnWebsshOpenMain: document.getElementById('btn-webssh-open-main'),
+            btnWebsshCopy: document.getElementById('btn-webssh-copy'),
+            dashboardPort: document.getElementById('dashboard-port'),
+        };
+
+        elements.dashboardPort.textContent = String(window.location.port || 25000);
+
+        function showToast(message) {
+            elements.toast.textContent = message;
+            elements.toast.classList.add('show');
+            clearTimeout(showToast.timer);
+            showToast.timer = setTimeout(() => elements.toast.classList.remove('show'), 1800);
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast(`已复制: ${text}`);
+            }).catch(() => {
+                showToast('复制失败');
+            });
+        }
+
+        function escapeHtml(text) {
+            return String(text || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function loadCredentialStore() {
+            try {
+                return JSON.parse(localStorage.getItem(LOCAL_CREDENTIALS_KEY) || '{}');
+            } catch (_) {
+                return {};
+            }
+        }
+
+        function saveCredentialStore(store) {
+            localStorage.setItem(LOCAL_CREDENTIALS_KEY, JSON.stringify(store));
+        }
+
+        function credentialKey(protocol, host, username, port) {
+            return `${protocol}:${host}:${port}:${username}`;
+        }
+
+        function saveLocalCredential(protocol, host, username, port, password) {
+            const store = loadCredentialStore();
+            store[credentialKey(protocol, host, username, port)] = {
+                protocol,
+                host,
+                username,
+                port,
+                password,
+                updated_at: Date.now(),
+            };
+            saveCredentialStore(store);
+        }
+
+        function removeLocalCredential(protocol, host, username, port) {
+            const store = loadCredentialStore();
+            delete store[credentialKey(protocol, host, username, port)];
+            saveCredentialStore(store);
+        }
+
+        function removeLocalCredentialsByHost(host) {
+            const store = loadCredentialStore();
+            let changed = false;
+            Object.keys(store).forEach((key) => {
+                if (store[key] && store[key].host === host) {
+                    delete store[key];
+                    changed = true;
+                }
+            });
+            if (changed) {
+                saveCredentialStore(store);
+            }
+        }
+
+        function listLocalCredentialsForHost(host) {
+            return Object.values(loadCredentialStore())
+                .filter((item) => item && item.host === host)
+                .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+        }
+
+        function getPreferredTelnetCredential(device) {
+            const all = listLocalCredentialsForHost(device.ip);
+            const telnetCreds = all.filter((item) => item.protocol === 'telnet');
+            if (!telnetCreds.length) {
+                return null;
+            }
+            const exact = telnetCreds.find((item) => Number(item.port) === 23);
+            return exact || telnetCreds[0];
+        }
+
+        function annotateDeviceWithLocalCredential(device) {
+            const credential = getPreferredTelnetCredential(device);
+            device.hasLocalCredential = !!credential;
+            device.localCredential = credential;
+            return device;
+        }
+
+        function loadUpdateProfile() {
+            try {
+                return JSON.parse(localStorage.getItem(LOCAL_UPDATE_PROFILE_KEY) || '{}');
+            } catch (_) {
+                return {};
+            }
+        }
+
+        function saveUpdateProfile(profile) {
+            localStorage.setItem(LOCAL_UPDATE_PROFILE_KEY, JSON.stringify(profile));
+        }
+
+        function clearUpdateProfile() {
+            localStorage.removeItem(LOCAL_UPDATE_PROFILE_KEY);
+        }
+
+        function getSelectedDevices() {
+            return state.devices.filter((device) => state.selectedDevices.has(device.ip));
+        }
+
+        function syncSelectedCount() {
+            const count = state.selectedDevices.size;
+            elements.selectedCount.textContent = String(count);
+            elements.btnOpenUpdate.disabled = count === 0;
+            elements.btnClearSelection.disabled = count === 0;
+        }
+
+        function toggleDeviceSelection(ip, checked) {
+            if (checked) {
+                state.selectedDevices.add(ip);
+            } else {
+                state.selectedDevices.delete(ip);
+            }
+            syncSelectedCount();
+            if (elements.updateModal.classList.contains('open')) {
+                const selectedDevices = getSelectedDevices();
+                elements.updateHeading.textContent = `群发更新 · ${selectedDevices.length} 台设备`;
+                renderUpdateTargets(selectedDevices);
+                elements.btnUpdateStart.disabled = selectedDevices.length === 0;
+            }
+        }
+
+        function selectAllDevices() {
+            state.devices.forEach((device) => state.selectedDevices.add(device.ip));
+            renderDevices(state.devices);
+            syncSelectedCount();
+            if (elements.updateModal.classList.contains('open')) {
+                const selectedDevices = getSelectedDevices();
+                elements.updateHeading.textContent = `群发更新 · ${selectedDevices.length} 台设备`;
+                renderUpdateTargets(selectedDevices);
+                elements.btnUpdateStart.disabled = selectedDevices.length === 0;
+            }
+        }
+
+        function clearSelection() {
+            state.selectedDevices.clear();
+            renderDevices(state.devices);
+            syncSelectedCount();
+            if (elements.updateModal.classList.contains('open')) {
+                elements.updateHeading.textContent = '群发更新 · 0 台设备';
+                renderUpdateTargets([]);
+                elements.btnUpdateStart.disabled = true;
+            }
+        }
+
+        function deriveDefaultSshUser(devices) {
+            if (!devices.length) return '';
+            const usernames = [...new Set(devices.map((device) => device.default_user || 'root').filter(Boolean))];
+            return usernames.length === 1 ? usernames[0] : '';
+        }
+
+        function renderUpdateTargets(devices) {
+            if (!devices.length) {
+                elements.updateTargets.innerHTML = '<div class="tag">未选择设备</div>';
+                return;
+            }
+            elements.updateTargets.innerHTML = devices.map((device) => `
+                <div class="tag">${device.display_name} <strong>${device.ip}</strong></div>
+            `).join('');
+        }
+
+        function prefillUpdateForm(devices) {
+            const profile = loadUpdateProfile();
+            const singleDevice = devices.length === 1 ? devices[0] : null;
+            const telnetCredential = singleDevice?.localCredential || null;
+            const defaultParallelism = Math.min(UPDATE_MAX_PARALLEL, Math.max(1, devices.length || 1));
+
+            elements.updateStrategy.value = profile.strategy || 'auto';
+            elements.updateParallelism.value = String(profile.parallelism || defaultParallelism);
+            elements.updateRemember.checked = profile.remember !== false;
+            elements.updateUseSudo.checked = profile.use_sudo !== false;
+            elements.updateSudoPassword.value = profile.sudo_password || '';
+
+            elements.updateSshUser.value = profile.ssh_user !== undefined ? profile.ssh_user : deriveDefaultSshUser(devices);
+            elements.updateSshPort.value = String(profile.ssh_port || 22);
+            elements.updateSshPassword.value = profile.ssh_password || '';
+
+            elements.updateTelnetUser.value = profile.telnet_user !== undefined ? profile.telnet_user : (telnetCredential?.username || '');
+            elements.updateTelnetPort.value = String(profile.telnet_port || telnetCredential?.port || 23);
+            elements.updateTelnetPassword.value = profile.telnet_password !== undefined ? profile.telnet_password : (telnetCredential?.password || '');
+        }
+
+        function collectUpdateForm() {
+            const parallelism = Math.max(
+                1,
+                Math.min(UPDATE_MAX_PARALLEL, Number(elements.updateParallelism.value || 1))
+            );
+            const profile = {
+                strategy: elements.updateStrategy.value,
+                parallelism,
+                remember: elements.updateRemember.checked,
+                use_sudo: elements.updateUseSudo.checked,
+                sudo_password: elements.updateSudoPassword.value,
+                ssh_user: elements.updateSshUser.value.trim(),
+                ssh_port: Number(elements.updateSshPort.value || 22),
+                ssh_password: elements.updateSshPassword.value,
+                telnet_user: elements.updateTelnetUser.value.trim(),
+                telnet_port: Number(elements.updateTelnetPort.value || 23),
+                telnet_password: elements.updateTelnetPassword.value,
+            };
+            if (elements.updateRemember.checked) {
+                saveUpdateProfile(profile);
+            } else {
+                clearUpdateProfile();
+            }
+            return profile;
+        }
+
+        function formatPercent(value) {
+            if (value === null || value === undefined || Number.isNaN(value)) {
+                return 'N/A';
+            }
+            return `${Number(value).toFixed(1)}%`;
+        }
+
+        function clampPercent(value) {
+            if (value === null || value === undefined || Number.isNaN(value)) {
+                return 0;
+            }
+            return Math.max(0, Math.min(100, Number(value)));
+        }
+
+        function formatBytesFromKb(kb) {
+            if (kb === null || kb === undefined) {
+                return 'N/A';
+            }
+            const mb = kb / 1024;
+            if (mb >= 1024) {
+                return `${(mb / 1024).toFixed(2)} GB`;
+            }
+            return `${mb.toFixed(0)} MB`;
+        }
+
+        function formatBytesFromMb(mb) {
+            if (mb === null || mb === undefined) {
+                return 'N/A';
+            }
+            if (mb >= 1024) {
+                return `${(mb / 1024).toFixed(2)} GB`;
+            }
+            return `${Number(mb).toFixed(0)} MB`;
+        }
+
+        function formatUptime(seconds) {
+            if (!seconds && seconds !== 0) {
+                return 'N/A';
+            }
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (days > 0) {
+                return `${days}d ${hours}h`;
+            }
+            return `${hours}h ${minutes}m`;
+        }
+
+        function meterClass(value) {
+            if (value >= 90) return 'danger';
+            if (value >= 75) return 'warn';
+            return '';
+        }
+
+        function renderSparkline(values, color) {
+            if (!values || values.length < 2) {
+                return '';
+            }
+            const width = 160;
+            const height = 24;
+            const maxX = values.length - 1;
+            const points = values.map((value, index) => {
+                const x = maxX === 0 ? 0 : (index / maxX) * width;
+                const y = height - (clampPercent(value) / 100) * height;
+                return `${x.toFixed(2)},${y.toFixed(2)}`;
+            }).join(' ');
+            return `
+                <svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                    <polyline fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" points="${points}"></polyline>
+                </svg>
+            `;
+        }
+
+        function renderMetric(title, value, percent, note, history, color) {
+            const pct = clampPercent(percent);
+            return `
+                <div class="metric">
+                    <div class="metric-head">
+                        <div class="metric-title">${title}</div>
+                        <div class="metric-value">${value}</div>
+                    </div>
+                    <div class="meter ${meterClass(pct)}"><span style="width:${pct}%;"></span></div>
+                    <div class="metric-note">${note || ''}</div>
+                    ${renderSparkline(history, color)}
+                </div>
+            `;
+        }
+
+        function renderMetricSet(device) {
+            const metrics = [
+                renderMetric(
+                    'CPU',
+                    formatPercent(device.cpu_usage_percent),
+                    device.cpu_usage_percent,
+                    `${device.cpu_cores || 'N/A'} cores`,
+                    device.history.cpu,
+                    '#0f766e'
+                ),
+                renderMetric(
+                    '内存',
+                    formatPercent(device.mem_used_percent),
+                    device.mem_used_percent,
+                    `${formatBytesFromKb(device.mem_used_kb)} / ${formatBytesFromKb(device.mem_total_kb)} · 不含缓存`,
+                    device.history.mem,
+                    '#1f7a8c'
+                ),
+            ];
+
+            if (device.gpu_present) {
+                metrics.push(
+                    renderMetric(
+                        'GPU',
+                        formatPercent(device.gpu_usage_percent !== null ? device.gpu_usage_percent : device.gpu_mem_used_percent),
+                        device.gpu_usage_percent !== null ? device.gpu_usage_percent : device.gpu_mem_used_percent,
+                        `${device.gpu_vendor || 'GPU'} ${formatBytesFromMb(device.gpu_mem_used_mb)} / ${formatBytesFromMb(device.gpu_mem_total_mb)}`,
+                        device.history.gpu,
+                        '#b45309'
+                    )
+                );
+            }
+
+            if (device.is_ax && device.cmm_total_kb !== null) {
+                metrics.push(
+                    renderMetric(
+                        'AX CMM',
+                        formatPercent(device.cmm_used_percent),
+                        device.cmm_used_percent,
+                        `${formatBytesFromKb(device.cmm_used_kb)} / ${formatBytesFromKb(device.cmm_total_kb)}`,
+                        device.history.cmm,
+                        '#bb4432'
+                    )
+                );
+            }
+
+            return metrics.join('');
+        }
+
+        function renderDevice(device) {
+            const selected = state.selectedDevices.has(device.ip);
+            return `
+                <article class="device-card">
+                    <div class="device-top">
+                        <div class="device-title">
+                            <h2>${device.display_name}</h2>
+                            <div class="device-subtitle">
+                                <span>${device.device_type}</span>
+                                <span>${device.os_name}</span>
+                                <span>${device.platform_vendor || 'Generic'}</span>
+                                ${device.hasLocalCredential ? '<span class="saved-badge">本机已保存 Telnet 密码</span>' : ''}
+                            </div>
+                        </div>
+                        <div class="device-aside">
+                            <div class="status">Online</div>
+                            <label class="device-select">
+                                <input type="checkbox" ${selected ? 'checked' : ''} onchange="toggleDeviceSelection('${device.ip}', this.checked)">
+                                更新
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="info-row">
+                        <div class="chip">IP <strong>${device.ip}</strong></div>
+                        <div class="chip">用户 <strong>${device.default_user}</strong></div>
+                        <div class="chip">架构 <strong>${device.arch || device.machine || 'N/A'}</strong></div>
+                        <div class="chip">运行 <strong>${formatUptime(device.uptime_seconds)}</strong></div>
+                    </div>
+
+                    <div class="metrics-grid">${renderMetricSet(device)}</div>
+
+                    <div class="actions">
+                        <button class="btn-secondary" onclick="openDeviceDetail('${device.ip}')">详情</button>
+                        <button class="btn-primary" onclick="openTerminal('${device.ip}')">终端</button>
+                        <button class="btn-secondary" onclick="copyText('${device.ip}')">复制 IP</button>
+                        ${device.hasLocalCredential ? `<button class="btn-ghost" onclick="clearPassword('${device.ip}')">清除本机 Telnet 密码</button>` : ''}
+                    </div>
+                </article>
+            `;
+        }
+
+        function renderSummary(summary) {
+            const avgCpu = summary.avg_cpu_usage_percent === null ? 'N/A' : `${summary.avg_cpu_usage_percent.toFixed(1)}%`;
+            elements.summaryGrid.innerHTML = `
+                <div class="summary-card">
+                    <h3>在线设备</h3>
+                    <div class="summary-value">${summary.device_count}</div>
+                    <div class="summary-note">当前在线主机数</div>
+                </div>
+                <div class="summary-card">
+                    <h3>平均 CPU</h3>
+                    <div class="summary-value">${avgCpu}</div>
+                    <div class="summary-note">全网平均 CPU 占用</div>
+                </div>
+                <div class="summary-card">
+                    <h3>高 CPU</h3>
+                    <div class="summary-value">${summary.high_cpu_count}</div>
+                    <div class="summary-note">CPU 超过 80%</div>
+                </div>
+                <div class="summary-card">
+                    <h3>GPU / AX</h3>
+                    <div class="summary-value">${summary.gpu_count} / ${summary.ax_count}</div>
+                    <div class="summary-note">支持 GPU / CMM 的设备</div>
+                </div>
+            `;
+
+            const strips = Object.entries(summary.device_types || {}).map(([name, count]) => {
+                return `<div class="tag">${name} <strong>${count}</strong></div>`;
+            });
+            elements.typeStrip.innerHTML = strips.join('');
+        }
+
+        function renderDevices(devices) {
+            if (!devices.length) {
+                elements.devicesGrid.innerHTML = `
+                    <div class="empty">
+                        <h3>等待设备上线</h3>
+                        <p>确保设备与 Dashboard 主机在同一网段，并放通 UDP 9999。</p>
+                    </div>
+                `;
+                return;
+            }
+            elements.devicesGrid.innerHTML = devices.map(renderDevice).join('');
+        }
+
+        function buildDetailItems(device) {
+            const details = [
+                ['用户', device.default_user],
+                ['IP', device.ip],
+                ['系统', device.os_name],
+                ['系统 ID', device.os_id || 'N/A'],
+                ['兼容族', device.os_like || 'N/A'],
+                ['架构', device.arch || device.machine || 'N/A'],
+                ['内核', device.kernel || 'N/A'],
+                ['运行时', device.libc || 'N/A'],
+                ['机型', device.board_model || device.device_type],
+                ['厂商', device.platform_vendor || device.board_vendor || 'N/A'],
+                ['在线时间', device.last_seen_str || 'N/A'],
+                ['运行时长', formatUptime(device.uptime_seconds)],
+                ['CPU 核数', device.cpu_cores || 'N/A'],
+                ['内存总量', formatBytesFromKb(device.mem_total_kb)],
+                ['内存已用', formatBytesFromKb(device.mem_used_kb)],
+                ['可用内存', formatBytesFromKb(device.mem_available_kb)],
+                ['缓存', formatBytesFromKb(device.mem_cache_effective_kb)],
+                ['Buffers', formatBytesFromKb(device.mem_buffers_kb)],
+                ['Cached', formatBytesFromKb(device.mem_cached_kb)],
+                ['SReclaimable', formatBytesFromKb(device.mem_sreclaimable_kb)],
+                ['Shmem', formatBytesFromKb(device.mem_shmem_kb)],
+            ];
+
+            if (device.gpu_present) {
+                details.push(['GPU 厂商', device.gpu_vendor || 'N/A']);
+                details.push(['GPU 占用', formatPercent(device.gpu_usage_percent !== null ? device.gpu_usage_percent : device.gpu_mem_used_percent)]);
+                details.push(['显存', `${formatBytesFromMb(device.gpu_mem_used_mb)} / ${formatBytesFromMb(device.gpu_mem_total_mb)}`]);
+            }
+            if (device.gpu_note) {
+                details.push(['GPU 备注', device.gpu_note]);
+            }
+            if (device.is_ax && device.cmm_total_kb !== null) {
+                details.push(['CMM 总量', formatBytesFromKb(device.cmm_total_kb)]);
+                details.push(['CMM 已用', formatBytesFromKb(device.cmm_used_kb)]);
+                details.push(['CMM 空闲', formatBytesFromKb(device.cmm_free_kb)]);
+            }
+            if (device.uid) details.push(['AX UID', device.uid]);
+            if (device.version) details.push(['AX 版本', device.version]);
+            if (device.board_id) details.push(['Board ID', device.board_id]);
+            return details;
+        }
+
+        function renderDetailModal() {
+            if (!state.detailDeviceIp) {
+                elements.detailModal.classList.remove('open');
+                return;
+            }
+            const device = getDevice(state.detailDeviceIp);
+            if (!device) {
+                state.detailDeviceIp = null;
+                elements.detailModal.classList.remove('open');
+                return;
+            }
+
+            elements.detailHeading.textContent = device.display_name;
+            elements.detailSubheading.textContent = `${device.ip} · ${device.device_type} · ${device.os_name}`;
+            elements.detailSummary.innerHTML = `
+                <div class="tag">CPU <strong>${formatPercent(device.cpu_usage_percent)}</strong></div>
+                <div class="tag">内存 <strong>${formatPercent(device.mem_used_percent)}</strong></div>
+                ${device.gpu_present ? `<div class="tag">GPU <strong>${formatPercent(device.gpu_usage_percent !== null ? device.gpu_usage_percent : device.gpu_mem_used_percent)}</strong></div>` : ''}
+                ${device.is_ax && device.cmm_total_kb !== null ? `<div class="tag">CMM <strong>${formatPercent(device.cmm_used_percent)}</strong></div>` : ''}
+            `;
+            elements.detailGrid.innerHTML = buildDetailItems(device).map(([label, value]) => `
+                <div class="detail">
+                    <div class="detail-label">${label}</div>
+                    <div class="detail-value">${value || 'N/A'}</div>
+                </div>
+            `).join('');
+            elements.detailModal.classList.add('open');
+        }
+
+        function openDeviceDetail(ip) {
+            state.detailDeviceIp = ip;
+            renderDetailModal();
+        }
+
+        function closeDeviceDetail() {
+            state.detailDeviceIp = null;
+            elements.detailModal.classList.remove('open');
+        }
+
+        async function refreshDevices() {
+            try {
+                const response = await fetch('/api/devices');
+                const payload = await response.json();
+                state.devices = (payload.devices || []).map(annotateDeviceWithLocalCredential);
+                const onlineIps = new Set(state.devices.map((device) => device.ip));
+                state.selectedDevices = new Set([...state.selectedDevices].filter((ip) => onlineIps.has(ip)));
+                renderSummary(payload.summary || { device_count: 0, device_types: {} });
+                renderDevices(state.devices);
+                syncSelectedCount();
+                if (elements.updateModal.classList.contains('open')) {
+                    const selectedDevices = getSelectedDevices();
+                    elements.updateHeading.textContent = `群发更新 · ${selectedDevices.length} 台设备`;
+                    renderUpdateTargets(selectedDevices);
+                }
+                renderDetailModal();
+            } catch (_) {
+                showToast('刷新设备列表失败');
+            }
+        }
+
+        function getDevice(ip) {
+            return state.devices.find((item) => item.ip === ip) || null;
+        }
+
+        function updateStatusClass(status) {
+            if (status === 'running' || status === 'queued' || status === 'success') return status === 'success' ? 'success' : 'running';
+            if (status === 'partial_success') return 'partial';
+            if (status === 'failed') return 'failed';
+            return '';
+        }
+
+        function updateStatusLabel(status) {
+            if (status === 'queued') return '准备中';
+            if (status === 'running') return '更新中';
+            if (status === 'success') return '全部成功';
+            if (status === 'partial_success') return '部分成功';
+            if (status === 'failed') return '失败';
+            return '未开始';
+        }
+
+        function renderUpdateJob(job = null) {
+            if (!job) {
+                elements.updateStatus.textContent = '尚未启动更新任务。';
+                elements.updateResults.innerHTML = '<div class="empty"><h3>等待任务启动</h3><p>选择设备并填写凭据后，即可批量更新。</p></div>';
+                elements.btnUpdateRefresh.disabled = !state.updateJobId;
+                elements.btnUpdateStart.disabled = getSelectedDevices().length === 0;
+                return;
+            }
+
+            state.updateJobId = job.job_id;
+            const statusClass = updateStatusClass(job.status);
+            elements.updateStatus.innerHTML = `
+                <span class="status-chip ${statusClass}">${updateStatusLabel(job.status)}</span>
+                <span>完成 ${job.completed_count || 0}/${job.target_count || 0}</span>
+                <span>成功 ${job.success_count || 0}</span>
+                <span>失败 ${job.failed_count || 0}</span>
+                ${job.bundle_version ? `<span>包版本 ${escapeHtml(job.bundle_version)}</span>` : ''}
+                ${job.error ? `<span>${escapeHtml(job.error)}</span>` : ''}
+            `;
+
+            const results = (job.targets || []).map((target) => {
+                const targetStatusClass = updateStatusClass(target.status);
+                const attempts = (target.attempts || []).map((attempt) => `
+                    <div class="attempt ${attempt.ok ? 'ok' : 'fail'}">${escapeHtml((attempt.transport || '').toUpperCase() || 'N/A')} · ${escapeHtml(attempt.message || '')}</div>
+                `).join('');
+                return `
+                    <article class="update-result">
+                        <div class="update-result-head">
+                            <div class="update-result-title">
+                                <strong>${escapeHtml(target.display_name)}</strong>
+                                <span>${escapeHtml(target.ip)} · ${escapeHtml(target.device_type || '')} · ${escapeHtml(target.os_name || '')}</span>
+                            </div>
+                            <div class="status-chip ${targetStatusClass}">${escapeHtml(updateStatusLabel(target.status))}</div>
+                        </div>
+                        <div class="update-result-note">
+                            ${escapeHtml(target.message || '等待开始')}
+                            ${target.transport ? ` · 通过 ${escapeHtml(String(target.transport).toUpperCase())}` : ''}
+                        </div>
+                        ${attempts ? `<div class="attempt-strip">${attempts}</div>` : ''}
+                        ${target.log ? `<pre class="update-log">${escapeHtml(target.log)}</pre>` : ''}
+                    </article>
+                `;
+            });
+
+            elements.updateResults.innerHTML = results.join('') || '<div class="empty"><h3>暂无结果</h3><p>任务启动后将在这里显示每台设备的更新过程。</p></div>';
+            elements.btnUpdateStart.disabled = job.status === 'queued' || job.status === 'running';
+            elements.btnUpdateRefresh.disabled = false;
+        }
+
+        function stopUpdatePolling() {
+            if (state.updatePollTimer) {
+                clearTimeout(state.updatePollTimer);
+                state.updatePollTimer = null;
+            }
+        }
+
+        async function fetchUpdateJobStatus(jobId, silent = false) {
+            if (!jobId) return null;
+            try {
+                const response = await fetch(`/api/update/jobs/${jobId}`);
+                if (!response.ok) {
+                    throw new Error('update job fetch failed');
+                }
+                const payload = await response.json();
+                renderUpdateJob(payload);
+                return payload;
+            } catch (_) {
+                if (!silent) {
+                    showToast('刷新更新任务失败');
+                }
+                return null;
+            }
+        }
+
+        async function pollUpdateJob(jobId) {
+            stopUpdatePolling();
+            const payload = await fetchUpdateJobStatus(jobId, true);
+            if (!payload) {
+                return;
+            }
+            if (payload.status === 'queued' || payload.status === 'running') {
+                state.updatePollTimer = setTimeout(() => pollUpdateJob(jobId), 1500);
+            }
+        }
+
+        function openUpdateModal() {
+            const selectedDevices = getSelectedDevices();
+            if (!selectedDevices.length) {
+                showToast('请先选择要更新的设备');
+                return;
+            }
+            elements.updateHeading.textContent = `群发更新 · ${selectedDevices.length} 台设备`;
+            elements.updateSubheading.textContent = 'Dashboard 会先生成最新更新包，再按 SSH/Telnet 下发，并最终调用 install.sh 保持 service / S90 / nohup 兼容。';
+            renderUpdateTargets(selectedDevices);
+            prefillUpdateForm(selectedDevices);
+            elements.updateModal.classList.add('open');
+            if (state.updateJobId) {
+                fetchUpdateJobStatus(state.updateJobId, true).then((job) => {
+                    if (job && (job.status === 'queued' || job.status === 'running')) {
+                        pollUpdateJob(job.job_id);
+                    }
+                });
+            } else {
+                renderUpdateJob(null);
+            }
+        }
+
+        function closeUpdateModal() {
+            elements.updateModal.classList.remove('open');
+            stopUpdatePolling();
+        }
+
+        async function refreshUpdateJob() {
+            if (!state.updateJobId) {
+                showToast('当前没有更新任务');
+                return;
+            }
+            await fetchUpdateJobStatus(state.updateJobId, false);
+        }
+
+        async function startBatchUpdate() {
+            const selectedDevices = getSelectedDevices();
+            if (!selectedDevices.length) {
+                showToast('请先选择要更新的设备');
+                return;
+            }
+
+            const profile = collectUpdateForm();
+            elements.btnUpdateStart.disabled = true;
+
+            try {
+                const response = await fetch('/api/update/jobs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        targets: selectedDevices.map((device) => device.ip),
+                        strategy: profile.strategy,
+                        parallelism: profile.parallelism,
+                        dashboard_origin: window.location.origin,
+                        ssh: {
+                            username: profile.ssh_user,
+                            password: profile.ssh_password,
+                            port: profile.ssh_port,
+                        },
+                        telnet: {
+                            username: profile.telnet_user,
+                            password: profile.telnet_password,
+                            port: profile.telnet_port,
+                        },
+                        sudo: {
+                            enabled: profile.use_sudo,
+                            password: profile.sudo_password,
+                        },
+                    }),
+                });
+
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || payload.message || '创建更新任务失败');
+                }
+
+                state.updateJobId = payload.job_id;
+                renderUpdateJob(payload);
+                pollUpdateJob(payload.job_id);
+                showToast('群发更新任务已启动');
+            } catch (error) {
+                elements.btnUpdateStart.disabled = false;
+                showToast(error.message || '创建更新任务失败');
+            }
+        }
+
+        function terminalSize() {
+            const rect = elements.terminalOutput.getBoundingClientRect();
+            return {
+                cols: Math.max(80, Math.floor(rect.width / 8.1)),
+                rows: Math.max(24, Math.floor(rect.height / 18)),
+            };
+        }
+
+        function setTerminalStatus(text) {
+            elements.terminalStatus.textContent = text || '';
+        }
+
+        function buildWebsshUrl(host) {
+            return WEBSSH2_URL_TEMPLATE.replace('{host}', encodeURIComponent(host));
+        }
+
+        function openWebsshWindow() {
+            if (!state.currentWebsshUrl) {
+                showToast('webssh2 地址为空');
+                return;
+            }
+
+            let popup = state.pendingWebsshWindow;
+            try {
+                if (popup && !popup.closed) {
+                    popup.location.href = state.currentWebsshUrl;
+                    popup.focus();
+                } else {
+                    popup = window.open(state.currentWebsshUrl, '_blank', 'noopener,noreferrer');
+                }
+            } catch (_) {
+                popup = window.open(state.currentWebsshUrl, '_blank', 'noopener,noreferrer');
+            }
+
+            state.pendingWebsshWindow = popup || null;
+            if (!popup) {
+                showToast('浏览器拦截了新窗口，请手动允许弹窗');
+                return;
+            }
+        }
+
+        function setTerminalMode(mode, device = null, protocol = state.activeProtocol) {
+            const isWebssh = mode === 'webssh';
+            const isBuiltin = mode === 'builtin';
+
+            elements.btnCtrlC.hidden = !isBuiltin;
+            elements.btnCtrlD.hidden = !isBuiltin;
+            elements.btnClearView.hidden = !isBuiltin;
+            elements.terminalWebssh.classList.toggle('hidden', !isWebssh);
+            elements.terminalStatus.classList.toggle('hidden', !isBuiltin);
+            elements.terminalOutput.classList.toggle('hidden', !isBuiltin);
+            elements.terminalHint.classList.toggle('hidden', !isBuiltin);
+
+            if (isWebssh && device) {
+                state.currentWebsshUrl = buildWebsshUrl(device.ip);
+                elements.terminalWebsshUrl.textContent = state.currentWebsshUrl;
+                elements.terminalWebsshLabel.textContent = `SSH 通过 webssh2 打开 ${device.ip}`;
+                elements.terminalModeNote.textContent = WEBSSH2_ENABLED
+                    ? 'SSH 使用 webssh2 新窗口，认证和交互由 webssh2 负责；这里不再保存 SSH 密码。'
+                    : '当前未启用 webssh2，SSH 会回退为当前页面的内置终端。';
+            } else {
+                state.currentWebsshUrl = '';
+                elements.terminalWebsshUrl.textContent = '';
+                if (protocol === 'ssh') {
+                    elements.terminalModeNote.textContent = 'SSH 使用当前页面内置终端。建议优先启用 webssh2，以获得更完整的终端体验。';
+                    elements.terminalHint.textContent = '内置 SSH 终端适合作为回退方案使用；当前页面不会为 SSH 保存本地密码。';
+                } else {
+                    elements.terminalModeNote.textContent = 'Telnet 使用当前页面内置终端，密码仅保存在当前浏览器本地。';
+                    elements.terminalHint.textContent = 'Telnet 使用内置终端，支持长轮询、输入批量发送，以及常见 login/password 提示的自动识别。';
+                }
+            }
+        }
+
+        function defaultPortForProtocol(protocol) {
+            return protocol === 'telnet' ? 23 : 22;
+        }
+
+        function applyProtocolDefaultPort(force = false) {
+            const protocol = elements.terminalProtocol.value;
+            const defaultPort = String(defaultPortForProtocol(protocol));
+            if (force || !elements.terminalPort.value || elements.terminalPort.value === '22' || elements.terminalPort.value === '23') {
+                elements.terminalPort.value = defaultPort;
+            }
+        }
+
+        function openModal() {
+            elements.modal.classList.add('open');
+        }
+
+        async function stopTerminalSession() {
+            state.pendingInput = '';
+            clearTimeout(state.inputFlushTimer);
+            state.inputFlushTimer = null;
+            state.pollToken += 1;
+            if (state.sessionId) {
+                const sessionId = state.sessionId;
+                state.sessionId = null;
+                try {
+                    await fetch(`/api/terminal/${sessionId}/close`, { method: 'POST' });
+                } catch (_) {
+                }
+            }
+            state.cursor = 0;
+        }
+
+        async function closeModal() {
+            elements.modal.classList.remove('open');
+            await stopTerminalSession();
+            setTerminalStatus('');
+            elements.terminalPassword.value = '';
+            elements.terminalOutput.textContent = '';
+            state.currentWebsshUrl = '';
+            state.pendingWebsshWindow = null;
+            state.currentDevice = null;
+        }
+
+        function showConnectForm(fromSavedFailure = false) {
+            elements.terminalAuthGrid.classList.remove('hidden');
+            setTerminalStatus(fromSavedFailure ? '本地保存的连接信息失效，请重新输入。' : '请输入连接信息。');
+        }
+
+        function hideConnectForm() {
+            elements.terminalAuthGrid.classList.add('hidden');
+            setTerminalStatus('终端已连接，点击窗口即可输入。');
+        }
+
+        function appendTerminal(text) {
+            if (!text) return;
+            const nearBottom =
+                elements.terminalOutput.scrollTop + elements.terminalOutput.clientHeight >= elements.terminalOutput.scrollHeight - 30;
+            elements.terminalOutput.textContent += text;
+            if (elements.terminalOutput.textContent.length > 180000) {
+                elements.terminalOutput.textContent = elements.terminalOutput.textContent.slice(-140000);
+            }
+            if (nearBottom) {
+                elements.terminalOutput.scrollTop = elements.terminalOutput.scrollHeight;
+            }
+        }
+
+        async function pollTerminalLoop(token) {
+            while (state.sessionId && token === state.pollToken) {
+                try {
+                    const response = await fetch(`/api/terminal/${state.sessionId}/poll?cursor=${state.cursor}&wait_ms=350`);
+                    if (!response.ok) {
+                        throw new Error('poll failed');
+                    }
+                    const payload = await response.json();
+                    state.cursor = payload.cursor || state.cursor;
+                    appendTerminal(payload.output || '');
+                    if (payload.closed) {
+                        state.sessionId = null;
+                        setTerminalStatus('终端连接已关闭。');
+                        showConnectForm(true);
+                        break;
+                    }
+                } catch (_) {
+                    setTerminalStatus('终端轮询失败。');
+                    await new Promise((resolve) => setTimeout(resolve, 600));
+                }
+            }
+        }
+
+        async function postTerminalInput(data = '', includeResize = true) {
+            if (!state.sessionId) return;
+            const size = terminalSize();
+            await fetch(`/api/terminal/${state.sessionId}/input`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    data,
+                    cols: includeResize ? size.cols : undefined,
+                    rows: includeResize ? size.rows : undefined,
+                }),
+            });
+        }
+
+        function scheduleInputFlush() {
+            if (state.inputFlushTimer) return;
+            state.inputFlushTimer = setTimeout(async () => {
+                state.inputFlushTimer = null;
+                if (!state.pendingInput) return;
+                const batch = state.pendingInput;
+                state.pendingInput = '';
+                try {
+                    await postTerminalInput(batch, true);
+                } catch (_) {
+                    setTerminalStatus('终端输入发送失败。');
+                }
+            }, 35);
+        }
+
+        function queueTerminalInput(data) {
+            if (!state.sessionId) return;
+            state.pendingInput += data;
+            scheduleInputFlush();
+        }
+
+        function scheduleResizeSync() {
+            clearTimeout(state.resizeTimer);
+            state.resizeTimer = setTimeout(async () => {
+                if (!state.sessionId) return;
+                try {
+                    await postTerminalInput('', true);
+                } catch (_) {
+                }
+            }, 120);
+        }
+
+        function fillTerminalForm(device, protocol, credential = null) {
+            if (!device) return null;
+            const savedCredential = credential || (protocol === 'telnet' ? getPreferredTelnetCredential(device) : null);
+            elements.terminalProtocol.value = protocol;
+            elements.terminalUser.value = savedCredential?.username || (protocol === 'telnet' ? '' : device.default_user || 'root');
+            elements.terminalPort.value = String(savedCredential?.port || defaultPortForProtocol(protocol));
+            elements.terminalPassword.value = savedCredential?.password || '';
+            elements.terminalRemember.checked = protocol === 'telnet';
+            return savedCredential;
+        }
+
+        async function startTerminalSession(device, options = {}) {
+            const protocol = options.protocol || 'ssh';
+            const username = options.username || (protocol === 'telnet' ? '' : device.default_user || 'root');
+            const password = options.password || '';
+            const port = Number(options.port || defaultPortForProtocol(protocol));
+            const remember = options.remember !== false;
+
+            setTerminalStatus(`正在建立 ${protocol.toUpperCase()} 会话...`);
+
+            const response = await fetch('/api/terminal/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host: device.ip,
+                    protocol,
+                    username,
+                    password,
+                    port,
+                }),
+            });
+
+            const payload = await response.json();
+            if (!response.ok) {
+                throw payload;
+            }
+
+            if (protocol === 'telnet') {
+                if (password && remember) {
+                    saveLocalCredential(protocol, device.ip, username, port, password);
+                    device.hasLocalCredential = true;
+                    device.localCredential = { protocol, host: device.ip, username, port, password, updated_at: Date.now() };
+                } else {
+                    removeLocalCredential(protocol, device.ip, username, port);
+                    const latest = getPreferredTelnetCredential(device);
+                    device.hasLocalCredential = !!latest;
+                    device.localCredential = latest;
+                }
+            }
+
+            state.sessionId = payload.session_id;
+            state.cursor = payload.cursor || 0;
+            state.pendingInput = '';
+            elements.terminalOutput.textContent = '';
+            hideConnectForm();
+            state.pollToken += 1;
+            pollTerminalLoop(state.pollToken);
+            await postTerminalInput('', true);
+            elements.terminalOutput.focus();
+        }
+
+        async function switchTerminalProtocol(protocol, options = {}) {
+            if (!state.currentDevice) return;
+
+            const device = state.currentDevice;
+            const autoConnect = options.autoConnect !== false;
+            state.activeProtocol = protocol;
+
+            await stopTerminalSession();
+            elements.terminalOutput.textContent = '';
+            elements.terminalPassword.value = '';
+
+            if (protocol === 'ssh' && WEBSSH2_ENABLED) {
+                fillTerminalForm(device, 'ssh');
+                hideConnectForm();
+                setTerminalMode('webssh', device);
+                return;
+            }
+
+            const savedCredential = fillTerminalForm(device, protocol);
+            setTerminalMode('builtin', device, protocol);
+            showConnectForm(false);
+
+            if (protocol === 'telnet' && autoConnect && savedCredential) {
+                try {
+                    await startTerminalSession(device, savedCredential);
+                    showToast('Telnet 已连接');
+                    refreshDevices();
+                    return;
+                } catch (error) {
+                    removeLocalCredential(
+                        savedCredential.protocol,
+                        savedCredential.host,
+                        savedCredential.username,
+                        Number(savedCredential.port || defaultPortForProtocol('telnet'))
+                    );
+                    device.hasLocalCredential = false;
+                    device.localCredential = null;
+                    elements.terminalPassword.value = '';
+                    showConnectForm(true);
+                    setTerminalStatus(error.message || error.error || '连接失败');
+                    refreshDevices();
+                    return;
+                }
+            }
+
+            if (protocol === 'telnet') {
+                setTerminalStatus(savedCredential ? '已填充本机保存的 Telnet 信息，可直接连接。' : '请输入 Telnet 连接信息。');
+            } else {
+                setTerminalStatus('请输入 SSH 连接信息。');
+            }
+        }
+
+        async function openTerminal(ip) {
+            const device = getDevice(ip);
+            if (!device) {
+                showToast('设备已离线');
+                return;
+            }
+
+            state.currentDevice = device;
+            state.pendingWebsshWindow = null;
+            elements.terminalHeading.textContent = `Terminal · ${device.display_name}`;
+            elements.terminalSubheading.textContent = `${device.ip} · ${device.os_name} · ${device.device_type}`;
+            elements.terminalOutput.textContent = '';
+            openModal();
+            await switchTerminalProtocol('ssh', { autoConnect: false });
+        }
+
+        async function connectFromForm() {
+            if (!state.currentDevice) return;
+
+            const protocol = elements.terminalProtocol.value;
+            const username = elements.terminalUser.value.trim();
+            if (protocol === 'ssh' && WEBSSH2_ENABLED) {
+                await switchTerminalProtocol('ssh', { autoConnect: false });
+                return;
+            }
+            try {
+                await startTerminalSession(state.currentDevice, {
+                    protocol,
+                    username,
+                    password: elements.terminalPassword.value,
+                    port: Number(elements.terminalPort.value || defaultPortForProtocol(protocol)),
+                    remember: elements.terminalRemember.checked,
+                });
+                showToast(`${protocol.toUpperCase()} 已连接`);
+                refreshDevices();
+            } catch (error) {
+                if (error.error === 'auth_failed' && elements.terminalPassword.value) {
+                    removeLocalCredential(
+                        protocol,
+                        state.currentDevice.ip,
+                        username,
+                        Number(elements.terminalPort.value || defaultPortForProtocol(protocol))
+                    );
+                }
+                showConnectForm(true);
+                setTerminalStatus(error.message || error.error || '连接失败');
+            }
+        }
+
+        function clearPassword(ip) {
+            removeLocalCredentialsByHost(ip);
+            const device = getDevice(ip);
+            if (device) {
+                device.hasLocalCredential = false;
+                device.localCredential = null;
+            }
+            showToast(`已清除当前浏览器为 ${ip} 保存的连接信息`);
+            refreshDevices();
+        }
+
+        function terminalKeyHandler(event) {
+            if (!state.sessionId) return;
+            if (event.ctrlKey && event.key.toLowerCase() === 'c') {
+                event.preventDefault();
+                queueTerminalInput('\u0003');
+                return;
+            }
+            if (event.ctrlKey && event.key.toLowerCase() === 'd') {
+                event.preventDefault();
+                queueTerminalInput('\u0004');
+                return;
+            }
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                queueTerminalInput('\n');
+                return;
+            }
+            if (event.key === 'Backspace') {
+                event.preventDefault();
+                queueTerminalInput('\u007f');
+                return;
+            }
+            if (event.key === 'Tab') {
+                event.preventDefault();
+                queueTerminalInput('\t');
+                return;
+            }
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                queueTerminalInput('\u001b[A');
+                return;
+            }
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                queueTerminalInput('\u001b[B');
+                return;
+            }
+            if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                queueTerminalInput('\u001b[C');
+                return;
+            }
+            if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                queueTerminalInput('\u001b[D');
+                return;
+            }
+            if (event.key.length === 1 && !event.metaKey && !event.altKey && !event.ctrlKey) {
+                event.preventDefault();
+                queueTerminalInput(event.key);
+            }
+        }
+
+        document.getElementById('btn-terminal-close').addEventListener('click', closeModal);
+        document.getElementById('btn-detail-close').addEventListener('click', closeDeviceDetail);
+        document.getElementById('btn-terminal-connect').addEventListener('click', connectFromForm);
+        elements.btnSelectAll.addEventListener('click', selectAllDevices);
+        elements.btnClearSelection.addEventListener('click', clearSelection);
+        elements.btnOpenUpdate.addEventListener('click', openUpdateModal);
+        elements.btnUpdateClose.addEventListener('click', closeUpdateModal);
+        elements.btnUpdateStart.addEventListener('click', startBatchUpdate);
+        elements.btnUpdateRefresh.addEventListener('click', refreshUpdateJob);
+        elements.btnCtrlC.addEventListener('click', () => queueTerminalInput('\u0003'));
+        elements.btnCtrlD.addEventListener('click', () => queueTerminalInput('\u0004'));
+        elements.btnClearView.addEventListener('click', () => {
+            elements.terminalOutput.textContent = '';
+        });
+        elements.btnWebsshOpen.addEventListener('click', openWebsshWindow);
+        elements.btnWebsshOpenMain.addEventListener('click', openWebsshWindow);
+        elements.btnWebsshCopy.addEventListener('click', () => {
+            if (!state.currentWebsshUrl) return;
+            copyText(state.currentWebsshUrl);
+        });
+
+        elements.terminalProtocol.addEventListener('change', async () => {
+            applyProtocolDefaultPort(true);
+            await switchTerminalProtocol(elements.terminalProtocol.value, { autoConnect: true });
+        });
+
+        elements.terminalOutput.addEventListener('keydown', terminalKeyHandler);
+        elements.terminalOutput.addEventListener('click', () => elements.terminalOutput.focus());
+        elements.terminalOutput.addEventListener('paste', (event) => {
+            if (!state.sessionId) return;
+            event.preventDefault();
+            const text = event.clipboardData.getData('text/plain');
+            queueTerminalInput(text);
+        });
+
+        window.addEventListener('resize', scheduleResizeSync);
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && elements.modal.classList.contains('open')) {
+                closeModal();
+                return;
+            }
+            if (event.key === 'Escape' && elements.updateModal.classList.contains('open')) {
+                closeUpdateModal();
+                return;
+            }
+            if (event.key === 'Escape' && elements.detailModal.classList.contains('open')) {
+                closeDeviceDetail();
+            }
+        });
+
+        syncSelectedCount();
+        renderUpdateJob(null);
+        refreshDevices();
+        setInterval(refreshDevices, 2000);
+
+        window.copyText = copyText;
+        window.openDeviceDetail = openDeviceDetail;
+        window.openTerminal = openTerminal;
+        window.clearPassword = clearPassword;
+        window.toggleDeviceSelection = toggleDeviceSelection;
+    </script>
+</body>
+</html>

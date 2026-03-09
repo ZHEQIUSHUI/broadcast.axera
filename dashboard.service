@@ -1,15 +1,16 @@
 [Unit]
-Description=Generic Broadcast Device Agent
+Description=Broadcast Device Dashboard
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/device_broadcast
+WorkingDirectory=/home/axera/broadcast.axera
+ExecStart=/usr/bin/env python3 /home/axera/broadcast.axera/dashboard.py
 Restart=always
 RestartSec=5
-User=root
-Group=root
+User=axera
+Group=axera
 StandardOutput=journal
 StandardError=journal
 
