@@ -25,12 +25,13 @@ pip install flask paramiko
 ./build.sh
 ```
 
-编译产物会输出到 `dist/`，脚本会自动检测并使用本机已有的：
+编译产物会输出到 `dist/`，脚本会自动扫描 `PATH` 和常见工具链目录中的 `gcc/g++` 及交叉编译器，并自动匹配可编译的目标。
 
-- `g++`
-- `aarch64-none-linux-gnu-g++`
-- `arm-linux-gnueabihf-g++`
-- `arm-AX620E-linux-uclibcgnueabihf-g++`
+如果只想先看当前机器发现到了哪些编译器：
+
+```bash
+./build.sh --list-compilers
+```
 
 ### 本地单独编译
 
