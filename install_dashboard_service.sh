@@ -12,7 +12,41 @@ if ! id "$DEFAULT_USER" >/dev/null 2>&1; then
 fi
 TARGET_USER="$DEFAULT_USER"
 TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")"
-PYTHON_BIN="${PYTHON_BIN:-$(command -v python3)}"
+
+python_supports_dashboard() {
+    local candidate="$1"
+    [[ -x "$candidate" ]] || return 1
+    "$candidate" -c 'import flask, paramiko' >/dev/null 2>&1
+}
+
+resolve_python_bin() {
+    local candidate
+
+    if [[ -n "${PYTHON_BIN:-}" ]]; then
+        if python_supports_dashboard "$PYTHON_BIN"; then
+            printf '%s\n' "$PYTHON_BIN"
+            return 0
+        fi
+        echo "Configured PYTHON_BIN is missing Flask/Paramiko: $PYTHON_BIN" >&2
+        return 1
+    fi
+
+    for candidate in \
+        "/home/$TARGET_USER/miniforge3/bin/python3" \
+        "/home/$CURRENT_USER/miniforge3/bin/python3" \
+        "$(command -v python3 2>/dev/null || true)" \
+        "/usr/bin/python3"
+    do
+        if python_supports_dashboard "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+PYTHON_BIN="$(resolve_python_bin || true)"
 
 resolve_service_name() {
     if [[ -n "${DASHBOARD_SERVICE_NAME:-}" ]]; then
@@ -36,7 +70,7 @@ resolve_service_name() {
 SERVICE_NAME="$(resolve_service_name)"
 
 if [[ -z "$PYTHON_BIN" ]]; then
-    echo "python3 not found"
+    echo "No suitable python3 found with Flask and Paramiko installed."
     exit 1
 fi
 

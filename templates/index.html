@@ -167,6 +167,82 @@
             margin-bottom: 14px;
         }
 
+        .filter-panel {
+            margin-bottom: 14px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .filter-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        .filter-title span {
+            color: var(--muted);
+            font-weight: 500;
+            font-size: 12px;
+        }
+
+        .filter-strip {
+            margin-bottom: 14px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .filter-chip {
+            border: 1px solid rgba(29, 39, 48, 0.12);
+            background: rgba(255, 250, 241, 0.82);
+            color: var(--muted);
+            padding: 7px 11px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            line-height: 1.2;
+        }
+
+        .filter-chip strong {
+            color: var(--ink);
+            font-size: 13px;
+        }
+
+        .filter-chip.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: transparent;
+        }
+
+        .filter-chip.active strong {
+            color: #fff;
+        }
+
+        .filter-chip-mark {
+            width: 14px;
+            text-align: center;
+            font-weight: 700;
+            opacity: 0.88;
+        }
+
+        .filter-chip:disabled {
+            opacity: 0.45;
+            cursor: default;
+        }
+
         .batch-bar {
             margin-bottom: 14px;
             display: flex;
@@ -1061,8 +1137,18 @@
         </section>
 
         <section class="type-strip" id="type-strip"></section>
+        <section class="filter-panel">
+            <div class="filter-head">
+                <div class="filter-title">
+                    <strong>型号筛选</strong>
+                    <span>可多选，不勾选就是全部显示</span>
+                </div>
+            </div>
+            <div class="filter-strip" id="model-strip"></div>
+        </section>
         <section class="batch-bar">
             <div class="hero-meta">
+                <div class="pill">当前筛选 <strong id="visible-count">0</strong></div>
                 <div class="pill">已选 <strong id="selected-count">0</strong></div>
                 <div class="pill">群发更新 <strong>SSH / Telnet / install.sh</strong></div>
             </div>
@@ -1272,6 +1358,7 @@
         const state = {
             devices: [],
             selectedDevices: new Set(),
+            selectedModelFilters: new Set(),
             currentDevice: null,
             detailDeviceIp: null,
             sessionId: null,
@@ -1293,7 +1380,9 @@
         const elements = {
             summaryGrid: document.getElementById('summary-grid'),
             typeStrip: document.getElementById('type-strip'),
+            modelStrip: document.getElementById('model-strip'),
             devicesGrid: document.getElementById('devices-grid'),
+            visibleCount: document.getElementById('visible-count'),
             selectedCount: document.getElementById('selected-count'),
             toast: document.getElementById('toast'),
             detailModal: document.getElementById('detail-modal'),
@@ -1448,6 +1537,193 @@
             return device;
         }
 
+        function deviceFilterSearchText(device) {
+            return [
+                device.device_kind,
+                device.device_type,
+                device.display_name,
+                device.hostname,
+                device.board_model,
+                device.board_vendor,
+                device.platform_vendor,
+                device.board_id,
+                device.arch,
+                device.machine,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+        }
+
+        function extractAxModelKey(device) {
+            const text = deviceFilterSearchText(device);
+            const match = text.match(/\bax[0-9]{3,4}[a-z0-9]*\b/);
+            return match ? match[0].toLowerCase() : '';
+        }
+
+        function getDeviceFilterTags(device) {
+            const text = deviceFilterSearchText(device);
+            const tags = new Set(['all']);
+            const axModel = extractAxModelKey(device);
+            const isRaspberryPi = !!device.is_raspberry_pi || /raspberry\s*pi|树莓派/.test(text);
+            const isX86 = device.device_kind === 'x86' || /\bx86(?:_64)?\b|\bamd64\b|\bi[3-6]86\b/.test(text);
+            const isAxera = !!device.is_ax || device.device_kind === 'ax' || !!axModel || /\baxera\b/.test(text);
+
+            if (isAxera) {
+                tags.add('axera');
+                if (axModel) {
+                    tags.add(`ax:${axModel}`);
+                }
+                return tags;
+            }
+
+            if (isRaspberryPi) {
+                tags.add('raspberry_pi');
+                return tags;
+            }
+
+            if (isX86) {
+                tags.add('x86');
+                return tags;
+            }
+
+            tags.add('other');
+            return tags;
+        }
+
+        function modelFilterLabel(filterKey) {
+            if (filterKey === 'all') return '全部';
+            if (filterKey === 'axera') return 'AXERA';
+            if (filterKey === 'x86') return 'x86';
+            if (filterKey === 'raspberry_pi') return '树莓派';
+            if (filterKey === 'other') return '其他';
+            if (filterKey.startsWith('ax:')) return filterKey.slice(3).toUpperCase();
+            return filterKey;
+        }
+
+        function buildModelFilters(devices) {
+            const broadCounts = new Map([
+                ['all', devices.length],
+                ['axera', 0],
+                ['x86', 0],
+                ['raspberry_pi', 0],
+                ['other', 0],
+            ]);
+            const specificAxCounts = new Map();
+
+            devices.forEach((device) => {
+                const tags = getDeviceFilterTags(device);
+                tags.forEach((tag) => {
+                    if (tag === 'all') return;
+                    if (tag.startsWith('ax:')) {
+                        specificAxCounts.set(tag, (specificAxCounts.get(tag) || 0) + 1);
+                        return;
+                    }
+                    broadCounts.set(tag, (broadCounts.get(tag) || 0) + 1);
+                });
+            });
+
+            const filters = [{ key: 'all', label: modelFilterLabel('all'), count: devices.length }];
+            if (broadCounts.get('axera')) {
+                filters.push({ key: 'axera', label: modelFilterLabel('axera'), count: broadCounts.get('axera') });
+            }
+
+            [...specificAxCounts.entries()]
+                .sort((a, b) => modelFilterLabel(a[0]).localeCompare(modelFilterLabel(b[0]), 'zh-CN', { numeric: true, sensitivity: 'base' }))
+                .forEach(([key, count]) => {
+                    filters.push({ key, label: modelFilterLabel(key), count });
+                });
+
+            if (broadCounts.get('x86')) {
+                filters.push({ key: 'x86', label: modelFilterLabel('x86'), count: broadCounts.get('x86') });
+            }
+            if (broadCounts.get('raspberry_pi')) {
+                filters.push({ key: 'raspberry_pi', label: modelFilterLabel('raspberry_pi'), count: broadCounts.get('raspberry_pi') });
+            }
+            if (broadCounts.get('other')) {
+                filters.push({ key: 'other', label: modelFilterLabel('other'), count: broadCounts.get('other') });
+            }
+
+            return filters;
+        }
+
+        function getVisibleDevices() {
+            if (!state.selectedModelFilters.size) {
+                return state.devices;
+            }
+            return state.devices.filter((device) => {
+                const tags = getDeviceFilterTags(device);
+                for (const filterKey of state.selectedModelFilters) {
+                    if (tags.has(filterKey)) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
+
+        function renderModelFilters() {
+            const filters = buildModelFilters(state.devices);
+            const filterKeys = new Set(filters.map((item) => item.key));
+            state.selectedModelFilters = new Set(
+                [...state.selectedModelFilters].filter((key) => key !== 'all' && filterKeys.has(key))
+            );
+            const allActive = state.selectedModelFilters.size === 0;
+            const filterButtons = [
+                `
+                    <button
+                        class="filter-chip ${allActive ? 'active' : ''}"
+                        onclick="clearDeviceModelFilters()"
+                    >
+                        <span class="filter-chip-mark">${allActive ? '✓' : ''}</span>
+                        <span>全部</span>
+                        <strong>${state.devices.length}</strong>
+                    </button>
+                `,
+            ];
+
+            filters
+                .filter((filter) => filter.key !== 'all')
+                .forEach((filter) => {
+                    const active = state.selectedModelFilters.has(filter.key);
+                    filterButtons.push(`
+                        <button
+                            class="filter-chip ${active ? 'active' : ''}"
+                            onclick="toggleDeviceModelFilter('${filter.key}')"
+                            ${filter.count === 0 ? 'disabled' : ''}
+                        >
+                            <span class="filter-chip-mark">${active ? '✓' : ''}</span>
+                            <span>${escapeHtml(filter.label)}</span>
+                            <strong>${filter.count}</strong>
+                        </button>
+                    `);
+                });
+
+            elements.modelStrip.innerHTML = filterButtons.join('');
+        }
+
+        function clearDeviceModelFilters() {
+            state.selectedModelFilters.clear();
+            renderModelFilters();
+            renderDevices();
+            syncSelectedCount();
+        }
+
+        function toggleDeviceModelFilter(filterKey) {
+            if (!filterKey || filterKey === 'all') {
+                clearDeviceModelFilters();
+                return;
+            }
+            if (state.selectedModelFilters.has(filterKey)) {
+                state.selectedModelFilters.delete(filterKey);
+            } else {
+                state.selectedModelFilters.add(filterKey);
+            }
+            renderModelFilters();
+            renderDevices();
+            syncSelectedCount();
+        }
+
         function loadUpdateProfile() {
             try {
                 return JSON.parse(localStorage.getItem(LOCAL_UPDATE_PROFILE_KEY) || '{}');
@@ -1469,10 +1745,16 @@
         }
 
         function syncSelectedCount() {
+            const visibleDevices = getVisibleDevices();
             const count = state.selectedDevices.size;
             elements.selectedCount.textContent = String(count);
+            elements.visibleCount.textContent = String(visibleDevices.length);
             elements.btnOpenUpdate.disabled = count === 0;
             elements.btnClearSelection.disabled = count === 0;
+            elements.btnSelectAll.disabled = visibleDevices.length === 0;
+            elements.btnSelectAll.textContent = state.selectedModelFilters.size === 0
+                ? '全选在线设备'
+                : `全选当前筛选 (${visibleDevices.length})`;
         }
 
         function toggleDeviceSelection(ip, checked) {
@@ -1491,8 +1773,8 @@
         }
 
         function selectAllDevices() {
-            state.devices.forEach((device) => state.selectedDevices.add(device.ip));
-            renderDevices(state.devices);
+            getVisibleDevices().forEach((device) => state.selectedDevices.add(device.ip));
+            renderDevices();
             syncSelectedCount();
             if (elements.updateModal.classList.contains('open')) {
                 const selectedDevices = getSelectedDevices();
@@ -1504,7 +1786,7 @@
 
         function clearSelection() {
             state.selectedDevices.clear();
-            renderDevices(state.devices);
+            renderDevices();
             syncSelectedCount();
             if (elements.updateModal.classList.contains('open')) {
                 elements.updateHeading.textContent = '群发更新 · 0 台设备';
@@ -1786,12 +2068,22 @@
             elements.typeStrip.innerHTML = strips.join('');
         }
 
-        function renderDevices(devices) {
-            if (!devices.length) {
+        function renderDevices() {
+            const devices = getVisibleDevices();
+            if (!state.devices.length) {
                 elements.devicesGrid.innerHTML = `
                     <div class="empty">
                         <h3>等待设备上线</h3>
                         <p>确保设备与 Dashboard 主机在同一网段，并放通 UDP 9999。</p>
+                    </div>
+                `;
+                return;
+            }
+            if (!devices.length) {
+                elements.devicesGrid.innerHTML = `
+                    <div class="empty">
+                        <h3>当前筛选没有设备</h3>
+                        <p>切换到其他型号分类，或等待该类型设备上线。</p>
                     </div>
                 `;
                 return;
@@ -1890,7 +2182,8 @@
                 const onlineIps = new Set(state.devices.map((device) => device.ip));
                 state.selectedDevices = new Set([...state.selectedDevices].filter((ip) => onlineIps.has(ip)));
                 renderSummary(payload.summary || { device_count: 0, device_types: {} });
-                renderDevices(state.devices);
+                renderModelFilters();
+                renderDevices();
                 syncSelectedCount();
                 if (elements.updateModal.classList.contains('open')) {
                     const selectedDevices = getSelectedDevices();
