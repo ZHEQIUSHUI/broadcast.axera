@@ -33,6 +33,7 @@ UPDATE_LOG_LIMIT = int(os.getenv("UPDATE_LOG_LIMIT", "60000"))
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 RUNTIME_ROOT = os.path.join(APP_ROOT, ".runtime")
 UPDATE_JOBS_ROOT = os.path.join(RUNTIME_ROOT, "update_jobs")
+DEVICE_METADATA_PATH = os.path.join(RUNTIME_ROOT, "device_metadata.json")
 
 ANSI_OSC_RE = re.compile(r"\x1b\][^\x07]*(?:\x07|\x1b\\)")
 ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -50,6 +51,8 @@ app = Flask(__name__, template_folder=os.path.join(APP_ROOT, "templates"))
 
 online_devices = {}
 device_lock = threading.Lock()
+device_metadata = {}
+metadata_lock = threading.Lock()
 
 terminal_sessions = {}
 terminal_lock = threading.Lock()
@@ -148,6 +151,114 @@ def tail_text(text, limit=UPDATE_LOG_LIMIT):
     return f"... [trimmed {len(text) - limit} chars]\n{trimmed}"
 
 
+def atomic_write_json(path, payload):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as stream:
+        json.dump(payload, stream, ensure_ascii=False, indent=2, sort_keys=True)
+    os.replace(temp_path, path)
+
+
+def normalize_metadata_text(value, limit):
+    text = clean_text(value)
+    if len(text) > limit:
+        text = text[:limit]
+    return text
+
+
+def make_device_metadata_key(prefix, value):
+    text = clean_text(value)
+    if not text:
+        return ""
+    text = re.sub(r"\s+", " ", text).strip().lower()
+    return f"{prefix}:{text}" if text else ""
+
+
+def device_metadata_keys_for_payload(payload, ip_address=""):
+    keys = []
+    seen = set()
+
+    def add(prefix, value):
+        key = make_device_metadata_key(prefix, value)
+        if key and key not in seen:
+            seen.add(key)
+            keys.append(key)
+
+    add("uid", payload.get("uid"))
+    add("board_id", payload.get("board_id"))
+    add("ip", payload.get("ip") or ip_address)
+    return keys
+
+
+def load_device_metadata_records():
+    if not os.path.exists(DEVICE_METADATA_PATH):
+        return {}
+
+    try:
+        with open(DEVICE_METADATA_PATH, "r", encoding="utf-8") as stream:
+            payload = json.load(stream)
+    except Exception as exc:
+        print(f"failed to load device metadata: {exc}")
+        return {}
+
+    if isinstance(payload, dict) and isinstance(payload.get("records"), dict):
+        records = payload["records"]
+    elif isinstance(payload, dict):
+        records = payload
+    else:
+        return {}
+
+    normalized = {}
+    for key, record in records.items():
+        if not isinstance(record, dict):
+            continue
+        title = normalize_metadata_text(record.get("title"), 80)
+        note = normalize_metadata_text(record.get("note"), 400)
+        if not title and not note:
+            continue
+        normalized[str(key)] = {
+            "title": title,
+            "note": note,
+            "updated_at": clean_text(record.get("updated_at")) or now_iso(),
+        }
+    return normalized
+
+
+def persist_device_metadata_records_locked():
+    atomic_write_json(
+        DEVICE_METADATA_PATH,
+        {
+            "version": 1,
+            "updated_at": now_iso(),
+            "records": device_metadata,
+        },
+    )
+
+
+def resolve_device_metadata(payload, ip_address=""):
+    keys = device_metadata_keys_for_payload(payload, ip_address)
+    with metadata_lock:
+        for key in keys:
+            record = device_metadata.get(key)
+            if record:
+                return dict(record)
+    return {}
+
+
+def apply_device_metadata(device):
+    metadata = resolve_device_metadata(device, device.get("ip"))
+    custom_title = metadata.get("title", "")
+    custom_note = metadata.get("note", "")
+    device["custom_title"] = custom_title
+    device["custom_note"] = custom_note
+    device["display_name"] = custom_title or device.get("hostname") or device.get("ip") or "Unknown"
+    device["metadata_updated_at"] = metadata.get("updated_at", "")
+    return device
+
+
+device_metadata = load_device_metadata_records()
+
+
 def normalize_device_payload(payload, ip_address):
     hostname = clean_text(payload.get("hostname")) or clean_text(payload.get("board_id")) or ip_address
     default_user = clean_text(payload.get("user"), "root") or "root"
@@ -208,6 +319,8 @@ def normalize_device_payload(payload, ip_address):
         "ip": ip_address,
         "hostname": hostname,
         "display_name": hostname,
+        "custom_title": "",
+        "custom_note": "",
         "default_user": default_user,
         "device_type": device_type,
         "device_kind": device_kind,
@@ -327,7 +440,36 @@ def create_update_target_snapshot(device):
         "device_type": device.get("device_type") or "Generic Linux",
         "device_kind": device.get("device_kind") or "generic_linux",
         "os_name": device.get("os_name") or "Linux",
+        "source": "online",
     }
+
+
+def create_manual_target_snapshot(host, default_user="root"):
+    host = clean_text(host)
+    return {
+        "ip": host,
+        "display_name": host,
+        "default_user": clean_text(default_user, "root") or "root",
+        "device_type": "远程安装目标",
+        "device_kind": "manual_target",
+        "os_name": "待连接",
+        "source": "manual",
+    }
+
+
+def normalize_target_hosts(raw_hosts):
+    if not isinstance(raw_hosts, list):
+        return []
+
+    hosts = []
+    seen = set()
+    for item in raw_hosts:
+        host = clean_text(item)
+        if not host or host in seen:
+            continue
+        seen.add(host)
+        hosts.append(host)
+    return hosts
 
 
 def build_update_job_public(job_id, targets, strategy, parallelism):
@@ -354,6 +496,7 @@ def build_update_job_public(job_id, targets, strategy, parallelism):
                 "display_name": target["display_name"],
                 "device_type": target["device_type"],
                 "os_name": target["os_name"],
+                "source": target.get("source", "online"),
                 "status": "pending",
                 "transport": None,
                 "message": "等待开始",
@@ -495,6 +638,7 @@ def udp_listener():
             ip_address = addr[0]
             payload = json.loads(data.decode("utf-8", errors="replace"))
             normalized = normalize_device_payload(payload, ip_address)
+            apply_device_metadata(normalized)
             normalized["last_seen"] = time.time()
             normalized["last_seen_str"] = now_string()
 
@@ -1454,6 +1598,46 @@ def index():
     )
 
 
+@app.route("/api/devices/metadata", methods=["POST"])
+def api_device_metadata():
+    body = request.get_json(silent=True) or {}
+    ip_address = clean_text(body.get("ip"))
+    if not ip_address:
+        return jsonify({"error": "missing_ip"}), 400
+
+    title = normalize_metadata_text(body.get("title"), 80)
+    note = normalize_metadata_text(body.get("note"), 400)
+
+    with device_lock:
+        device = online_devices.get(ip_address)
+        if not device:
+            return jsonify({"error": "device_not_found"}), 404
+        metadata_keys = device_metadata_keys_for_payload(device, ip_address)
+
+    primary_key = metadata_keys[0] if metadata_keys else make_device_metadata_key("ip", ip_address)
+    updated_at = now_iso()
+
+    with metadata_lock:
+        for key in metadata_keys:
+            device_metadata.pop(key, None)
+        if title or note:
+            device_metadata[primary_key] = {
+                "title": title,
+                "note": note,
+                "updated_at": updated_at,
+            }
+        persist_device_metadata_records_locked()
+
+    with device_lock:
+        device = online_devices.get(ip_address)
+        if not device:
+            return jsonify({"ok": True, "device": None})
+        apply_device_metadata(device)
+        payload = serialize_device(device)
+
+    return jsonify({"ok": True, "device": payload})
+
+
 @app.route("/api/devices")
 def api_devices():
     with device_lock:
@@ -1552,20 +1736,29 @@ def api_terminal_close(session_id):
 @app.route("/api/update/jobs", methods=["POST"])
 def api_update_create_job():
     body = request.get_json(silent=True) or {}
-    target_ips = body.get("targets") or []
+    target_ips = normalize_target_hosts(body.get("targets"))
+    manual_hosts = normalize_target_hosts(body.get("manual_targets"))
     strategy = clean_text(body.get("strategy"), "auto").lower()
     if strategy not in ("auto", "ssh", "telnet"):
         return jsonify({"error": "unsupported_strategy"}), 400
-    if not isinstance(target_ips, list) or not target_ips:
+    if not target_ips and not manual_hosts:
         return jsonify({"error": "missing_targets"}), 400
+
+    ssh_body = body.get("ssh") if isinstance(body.get("ssh"), dict) else {}
+    telnet_body = body.get("telnet") if isinstance(body.get("telnet"), dict) else {}
+    sudo_body = body.get("sudo") if isinstance(body.get("sudo"), dict) else {}
+    manual_default_user = (
+        clean_text(ssh_body.get("username"))
+        or clean_text(telnet_body.get("username"))
+        or "root"
+    )
 
     online_devices = get_online_devices_by_ip()
     targets = []
     missing = []
     seen = set()
     for ip_address in target_ips:
-        ip_address = clean_text(ip_address)
-        if not ip_address or ip_address in seen:
+        if ip_address in seen:
             continue
         seen.add(ip_address)
         device = online_devices.get(ip_address)
@@ -1574,14 +1767,21 @@ def api_update_create_job():
             continue
         targets.append(create_update_target_snapshot(device))
 
+    for host in manual_hosts:
+        if host in seen:
+            continue
+        seen.add(host)
+        device = online_devices.get(host)
+        if device:
+            targets.append(create_update_target_snapshot(device))
+        else:
+            targets.append(create_manual_target_snapshot(host, manual_default_user))
+
     if missing:
         return jsonify({"error": "devices_offline", "missing": missing}), 400
     if not targets:
         return jsonify({"error": "missing_targets"}), 400
 
-    ssh_body = body.get("ssh") if isinstance(body.get("ssh"), dict) else {}
-    telnet_body = body.get("telnet") if isinstance(body.get("telnet"), dict) else {}
-    sudo_body = body.get("sudo") if isinstance(body.get("sudo"), dict) else {}
     parallelism = clamp_int(body.get("parallelism"), 1, UPDATE_MAX_PARALLEL, min(len(targets), UPDATE_MAX_PARALLEL))
 
     dashboard_origin = clean_text(body.get("dashboard_origin"), request.host_url.rstrip("/"))

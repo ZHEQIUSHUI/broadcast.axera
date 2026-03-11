@@ -305,6 +305,17 @@
             font-size: 12px;
         }
 
+        .device-note-preview {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            word-break: break-word;
+        }
+
         .status {
             display: inline-flex;
             align-items: center;
@@ -599,6 +610,81 @@
             flex-wrap: wrap;
         }
 
+        .detail-editor {
+            margin: 0 18px 14px;
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(29, 39, 48, 0.08);
+            background: rgba(255, 255, 255, 0.68);
+            display: grid;
+            gap: 10px;
+        }
+
+        .detail-editor-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: baseline;
+            flex-wrap: wrap;
+        }
+
+        .detail-editor-head strong {
+            font-size: 14px;
+        }
+
+        .detail-editor-head span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .detail-editor-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 10px;
+        }
+
+        .detail-editor label {
+            display: grid;
+            gap: 5px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .detail-editor input,
+        .detail-editor textarea {
+            width: 100%;
+            padding: 9px 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(29, 39, 48, 0.12);
+            background: rgba(255, 255, 255, 0.9);
+            color: var(--ink);
+        }
+
+        .detail-editor textarea {
+            min-height: 88px;
+            resize: vertical;
+        }
+
+        .detail-editor-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .detail-editor-status {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .detail-editor-status.dirty {
+            color: #b45309;
+        }
+
+        .detail-editor-status.saved {
+            color: var(--accent);
+        }
+
         .detail-body {
             padding: 0 18px 18px;
             overflow: auto;
@@ -706,13 +792,26 @@
         }
 
         .update-card input,
-        .update-card select {
+        .update-card select,
+        .update-card textarea {
             width: 100%;
             padding: 9px 10px;
             border-radius: 10px;
             border: 1px solid rgba(29, 39, 48, 0.12);
             background: rgba(255, 255, 255, 0.88);
             color: var(--ink);
+        }
+
+        .update-card textarea {
+            min-height: 92px;
+            resize: vertical;
+            font: 13px/1.45 "IBM Plex Mono", monospace;
+        }
+
+        .update-note {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
         }
 
         .update-targets {
@@ -1155,6 +1254,7 @@
             <div class="batch-actions">
                 <button class="btn-secondary" id="btn-select-all">全选在线设备</button>
                 <button class="btn-secondary" id="btn-clear-selection">清空选择</button>
+                <button class="btn-secondary" id="btn-open-install">远程安装</button>
                 <button class="btn-primary" id="btn-open-update">群发更新</button>
             </div>
         </section>
@@ -1244,6 +1344,27 @@
                 <button class="btn-secondary" id="btn-detail-close">关闭</button>
             </div>
             <div class="detail-summary" id="detail-summary"></div>
+            <div class="detail-editor">
+                <div class="detail-editor-head">
+                    <strong>自定义标题 / 备注</strong>
+                    <span>保存在当前 Dashboard 主机，本机刷新或服务重启后仍保留</span>
+                </div>
+                <div class="detail-editor-grid">
+                    <label>
+                        设备标题
+                        <input id="detail-title-input" maxlength="80" placeholder="比如：入口测试位 AX650 / 车间树莓派 3">
+                    </label>
+                    <label>
+                        备注
+                        <textarea id="detail-note-input" maxlength="400" placeholder="记录用途、位置、责任人、网络说明等"></textarea>
+                    </label>
+                </div>
+                <div class="detail-editor-actions">
+                    <button class="btn-primary" id="btn-detail-save">保存</button>
+                    <button class="btn-secondary" id="btn-detail-reset">清空标题 / 备注</button>
+                    <span class="detail-editor-status" id="detail-editor-status"></span>
+                </div>
+            </div>
             <div class="detail-body">
                 <div class="detail-grid" id="detail-grid"></div>
             </div>
@@ -1295,9 +1416,14 @@
                     <div class="update-card">
                         <h4>目标设备</h4>
                         <div class="update-targets" id="update-targets"></div>
+                        <label>
+                            手动输入 IP / 主机
+                            <textarea id="update-manual-targets" placeholder="10.126.33.210&#10;10.126.33.211"></textarea>
+                        </label>
+                        <div class="update-note">适合还没安装 agent 的机器。支持换行、空格、逗号分隔，会和当前已选在线设备一起执行安装 / 更新。</div>
                         <div class="update-status" id="update-status">尚未启动更新任务。</div>
                         <div class="update-inline">
-                            <button class="btn-primary" id="btn-update-start">开始更新</button>
+                            <button class="btn-primary" id="btn-update-start">开始安装 / 更新</button>
                             <button class="btn-secondary" id="btn-update-refresh">刷新结果</button>
                         </div>
                     </div>
@@ -1361,6 +1487,11 @@
             selectedModelFilters: new Set(),
             currentDevice: null,
             detailDeviceIp: null,
+            detailDraftIp: null,
+            detailDraftTitle: '',
+            detailDraftNote: '',
+            detailMetadataDirty: false,
+            detailMetadataSaving: false,
             sessionId: null,
             cursor: 0,
             pendingInput: '',
@@ -1371,6 +1502,7 @@
             currentWebsshUrl: '',
             pendingWebsshWindow: null,
             updateJobId: null,
+            updateJobStatus: null,
             updatePollTimer: null,
         };
 
@@ -1390,6 +1522,11 @@
             detailSubheading: document.getElementById('detail-subheading'),
             detailSummary: document.getElementById('detail-summary'),
             detailGrid: document.getElementById('detail-grid'),
+            detailTitleInput: document.getElementById('detail-title-input'),
+            detailNoteInput: document.getElementById('detail-note-input'),
+            detailEditorStatus: document.getElementById('detail-editor-status'),
+            btnDetailSave: document.getElementById('btn-detail-save'),
+            btnDetailReset: document.getElementById('btn-detail-reset'),
             updateModal: document.getElementById('update-modal'),
             updateHeading: document.getElementById('update-heading'),
             updateSubheading: document.getElementById('update-subheading'),
@@ -1409,10 +1546,12 @@
             updateTelnetPassword: document.getElementById('update-telnet-password'),
             btnSelectAll: document.getElementById('btn-select-all'),
             btnClearSelection: document.getElementById('btn-clear-selection'),
+            btnOpenInstall: document.getElementById('btn-open-install'),
             btnOpenUpdate: document.getElementById('btn-open-update'),
             btnUpdateClose: document.getElementById('btn-update-close'),
             btnUpdateStart: document.getElementById('btn-update-start'),
             btnUpdateRefresh: document.getElementById('btn-update-refresh'),
+            updateManualTargets: document.getElementById('update-manual-targets'),
             modal: document.getElementById('terminal-modal'),
             terminalHeading: document.getElementById('terminal-heading'),
             terminalSubheading: document.getElementById('terminal-subheading'),
@@ -1463,6 +1602,31 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        function applyDeviceMetadataToRecord(device, title, note) {
+            if (!device) {
+                return null;
+            }
+            const customTitle = String(title || '').trim();
+            const customNote = String(note || '').trim();
+            device.custom_title = customTitle;
+            device.custom_note = customNote;
+            device.display_name = customTitle || device.hostname || device.ip || 'Unknown';
+            return device;
+        }
+
+        function replaceDeviceRecord(devicePayload) {
+            if (!devicePayload || !devicePayload.ip) {
+                return;
+            }
+            const nextDevice = annotateDeviceWithLocalCredential(devicePayload);
+            const index = state.devices.findIndex((item) => item.ip === nextDevice.ip);
+            if (index >= 0) {
+                state.devices.splice(index, 1, nextDevice);
+            } else {
+                state.devices.push(nextDevice);
+            }
         }
 
         function loadCredentialStore() {
@@ -1740,6 +1904,74 @@
             localStorage.removeItem(LOCAL_UPDATE_PROFILE_KEY);
         }
 
+        function parseManualTargetsText(text) {
+            const parts = String(text || '')
+                .split(/[\s,，;；]+/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+            return [...new Set(parts)];
+        }
+
+        function getManualTargetsFromForm() {
+            return parseManualTargetsText(elements.updateManualTargets.value);
+        }
+
+        function buildUpdateTargetEntries(devices = getSelectedDevices(), manualTargets = getManualTargetsFromForm()) {
+            const entries = [];
+            const seen = new Set();
+
+            devices.forEach((device) => {
+                if (!device || !device.ip || seen.has(device.ip)) {
+                    return;
+                }
+                seen.add(device.ip);
+                entries.push({
+                    ip: device.ip,
+                    display_name: device.display_name,
+                    device_type: device.device_type,
+                    os_name: device.os_name,
+                    source: 'online',
+                });
+            });
+
+            manualTargets.forEach((host) => {
+                if (!host || seen.has(host)) {
+                    return;
+                }
+                seen.add(host);
+                const onlineDevice = getDevice(host);
+                if (onlineDevice) {
+                    entries.push({
+                        ip: onlineDevice.ip,
+                        display_name: onlineDevice.display_name,
+                        device_type: onlineDevice.device_type,
+                        os_name: onlineDevice.os_name,
+                        source: 'manual',
+                    });
+                    return;
+                }
+                entries.push({
+                    ip: host,
+                    display_name: host,
+                    device_type: '远程安装目标',
+                    os_name: '待连接',
+                    source: 'manual',
+                });
+            });
+
+            return entries;
+        }
+
+        function refreshUpdateSelectionPreview() {
+            const entries = buildUpdateTargetEntries();
+            elements.updateHeading.textContent = `批量安装 / 更新 · ${entries.length} 台目标`;
+            elements.updateSubheading.textContent = 'Dashboard 会先生成最新更新包，再按 SSH/Telnet 下发到已选在线设备和手动输入 IP。适合在线更新和未安装设备首装。';
+            renderUpdateTargets(entries);
+            elements.btnUpdateStart.disabled = state.updateJobStatus === 'queued' || state.updateJobStatus === 'running'
+                ? true
+                : entries.length === 0;
+        }
+
         function getSelectedDevices() {
             return state.devices.filter((device) => state.selectedDevices.has(device.ip));
         }
@@ -1755,6 +1987,7 @@
             elements.btnSelectAll.textContent = state.selectedModelFilters.size === 0
                 ? '全选在线设备'
                 : `全选当前筛选 (${visibleDevices.length})`;
+            elements.btnOpenInstall.disabled = false;
         }
 
         function toggleDeviceSelection(ip, checked) {
@@ -1765,10 +1998,7 @@
             }
             syncSelectedCount();
             if (elements.updateModal.classList.contains('open')) {
-                const selectedDevices = getSelectedDevices();
-                elements.updateHeading.textContent = `群发更新 · ${selectedDevices.length} 台设备`;
-                renderUpdateTargets(selectedDevices);
-                elements.btnUpdateStart.disabled = selectedDevices.length === 0;
+                refreshUpdateSelectionPreview();
             }
         }
 
@@ -1777,10 +2007,7 @@
             renderDevices();
             syncSelectedCount();
             if (elements.updateModal.classList.contains('open')) {
-                const selectedDevices = getSelectedDevices();
-                elements.updateHeading.textContent = `群发更新 · ${selectedDevices.length} 台设备`;
-                renderUpdateTargets(selectedDevices);
-                elements.btnUpdateStart.disabled = selectedDevices.length === 0;
+                refreshUpdateSelectionPreview();
             }
         }
 
@@ -1789,9 +2016,7 @@
             renderDevices();
             syncSelectedCount();
             if (elements.updateModal.classList.contains('open')) {
-                elements.updateHeading.textContent = '群发更新 · 0 台设备';
-                renderUpdateTargets([]);
-                elements.btnUpdateStart.disabled = true;
+                refreshUpdateSelectionPreview();
             }
         }
 
@@ -1801,13 +2026,17 @@
             return usernames.length === 1 ? usernames[0] : '';
         }
 
-        function renderUpdateTargets(devices) {
-            if (!devices.length) {
-                elements.updateTargets.innerHTML = '<div class="tag">未选择设备</div>';
+        function renderUpdateTargets(targets) {
+            if (!targets.length) {
+                elements.updateTargets.innerHTML = '<div class="tag">未选择设备，可手动输入 IP / 主机</div>';
                 return;
             }
-            elements.updateTargets.innerHTML = devices.map((device) => `
-                <div class="tag">${device.display_name} <strong>${device.ip}</strong></div>
+            elements.updateTargets.innerHTML = targets.map((target) => `
+                <div class="tag">
+                    ${target.display_name}
+                    <strong>${target.ip}</strong>
+                    ${target.source === 'manual' ? '<span>手动</span>' : ''}
+                </div>
             `).join('');
         }
 
@@ -1830,6 +2059,7 @@
             elements.updateTelnetUser.value = profile.telnet_user !== undefined ? profile.telnet_user : (telnetCredential?.username || '');
             elements.updateTelnetPort.value = String(profile.telnet_port || telnetCredential?.port || 23);
             elements.updateTelnetPassword.value = profile.telnet_password !== undefined ? profile.telnet_password : (telnetCredential?.password || '');
+            elements.updateManualTargets.value = '';
         }
 
         function collectUpdateForm() {
@@ -1910,6 +2140,101 @@
             if (value >= 90) return 'danger';
             if (value >= 75) return 'warn';
             return '';
+        }
+
+        function setDetailEditorStatus(message, tone = '') {
+            elements.detailEditorStatus.textContent = message || '';
+            elements.detailEditorStatus.className = `detail-editor-status${tone ? ` ${tone}` : ''}`;
+        }
+
+        function syncDetailEditorButtons() {
+            const hasContent = !!(elements.detailTitleInput.value.trim() || elements.detailNoteInput.value.trim());
+            elements.btnDetailSave.disabled = state.detailMetadataSaving || !state.detailDeviceIp;
+            elements.btnDetailReset.disabled = state.detailMetadataSaving || !state.detailDeviceIp || !hasContent;
+        }
+
+        function syncDetailDraftFromDevice(device, force = false) {
+            if (!device) {
+                return;
+            }
+            const sameDevice = state.detailDraftIp === device.ip;
+            if (!force && sameDevice && state.detailMetadataDirty) {
+                syncDetailEditorButtons();
+                return;
+            }
+            state.detailDraftIp = device.ip;
+            state.detailDraftTitle = device.custom_title || '';
+            state.detailDraftNote = device.custom_note || '';
+            state.detailMetadataDirty = false;
+            elements.detailTitleInput.value = state.detailDraftTitle;
+            elements.detailNoteInput.value = state.detailDraftNote;
+            setDetailEditorStatus(device.metadata_updated_at ? `已保存 ${device.metadata_updated_at}` : '');
+            syncDetailEditorButtons();
+        }
+
+        function handleDetailDraftInput() {
+            if (!state.detailDeviceIp) {
+                return;
+            }
+            state.detailDraftTitle = elements.detailTitleInput.value;
+            state.detailDraftNote = elements.detailNoteInput.value;
+            state.detailMetadataDirty = true;
+            setDetailEditorStatus('有未保存修改', 'dirty');
+            syncDetailEditorButtons();
+        }
+
+        async function saveDeviceMetadata(clear = false) {
+            const device = getDevice(state.detailDeviceIp);
+            if (!device) {
+                showToast('设备已离线，无法保存');
+                return;
+            }
+
+            const title = clear ? '' : elements.detailTitleInput.value.trim();
+            const note = clear ? '' : elements.detailNoteInput.value.trim();
+
+            state.detailMetadataSaving = true;
+            syncDetailEditorButtons();
+            setDetailEditorStatus('保存中...');
+
+            try {
+                const response = await fetch('/api/devices/metadata', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ip: device.ip,
+                        title,
+                        note,
+                    }),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.message || payload.error || '保存失败');
+                }
+
+                if (payload.device) {
+                    replaceDeviceRecord(payload.device);
+                } else {
+                    applyDeviceMetadataToRecord(device, title, note);
+                }
+                state.detailMetadataDirty = false;
+                state.detailDraftTitle = title;
+                state.detailDraftNote = note;
+                renderDevices();
+                renderDetailModal();
+                if (elements.updateModal.classList.contains('open')) {
+                    refreshUpdateSelectionPreview();
+                }
+                setDetailEditorStatus('已保存', 'saved');
+                syncDetailEditorButtons();
+                showToast(title || note ? '设备标题 / 备注已保存' : '已清空设备标题 / 备注');
+            } catch (error) {
+                setDetailEditorStatus(error.message || '保存失败', 'dirty');
+                showToast(error.message || '保存失败');
+            } finally {
+                state.detailMetadataSaving = false;
+                syncDetailEditorButtons();
+            }
         }
 
         function renderSparkline(values, color) {
@@ -1997,17 +2322,20 @@
 
         function renderDevice(device) {
             const selected = state.selectedDevices.has(device.ip);
+            const showHostname = !!(device.custom_title && device.hostname && device.hostname !== device.display_name);
             return `
                 <article class="device-card">
                     <div class="device-top">
                         <div class="device-title">
-                            <h2>${device.display_name}</h2>
+                            <h2>${escapeHtml(device.display_name)}</h2>
                             <div class="device-subtitle">
-                                <span>${device.device_type}</span>
-                                <span>${device.os_name}</span>
-                                <span>${device.platform_vendor || 'Generic'}</span>
+                                ${showHostname ? `<span>主机 ${escapeHtml(device.hostname)}</span>` : ''}
+                                <span>${escapeHtml(device.device_type)}</span>
+                                <span>${escapeHtml(device.os_name)}</span>
+                                <span>${escapeHtml(device.platform_vendor || 'Generic')}</span>
                                 ${device.hasLocalCredential ? '<span class="saved-badge">本机已保存 Telnet 密码</span>' : ''}
                             </div>
+                            ${device.custom_note ? `<div class="device-note-preview">${escapeHtml(device.custom_note)}</div>` : ''}
                         </div>
                         <div class="device-aside">
                             <div class="status">Online</div>
@@ -2019,10 +2347,10 @@
                     </div>
 
                     <div class="info-row">
-                        <div class="chip">IP <strong>${device.ip}</strong></div>
-                        <div class="chip">用户 <strong>${device.default_user}</strong></div>
-                        <div class="chip">架构 <strong>${device.arch || device.machine || 'N/A'}</strong></div>
-                        <div class="chip">运行 <strong>${formatUptime(device.uptime_seconds)}</strong></div>
+                        <div class="chip">IP <strong>${escapeHtml(device.ip)}</strong></div>
+                        <div class="chip">用户 <strong>${escapeHtml(device.default_user)}</strong></div>
+                        <div class="chip">架构 <strong>${escapeHtml(device.arch || device.machine || 'N/A')}</strong></div>
+                        <div class="chip">运行 <strong>${escapeHtml(formatUptime(device.uptime_seconds))}</strong></div>
                     </div>
 
                     <div class="metrics-grid">${renderMetricSet(device)}</div>
@@ -2093,6 +2421,9 @@
 
         function buildDetailItems(device) {
             const details = [
+                ['标题', device.custom_title || '未设置'],
+                ['备注', device.custom_note || '未设置'],
+                ['主机名', device.hostname || 'N/A'],
                 ['用户', device.default_user],
                 ['IP', device.ip],
                 ['系统', device.os_name],
@@ -2143,12 +2474,17 @@
             const device = getDevice(state.detailDeviceIp);
             if (!device) {
                 state.detailDeviceIp = null;
+                state.detailDraftIp = null;
+                state.detailMetadataDirty = false;
+                state.detailMetadataSaving = false;
+                setDetailEditorStatus('');
                 elements.detailModal.classList.remove('open');
                 return;
             }
 
             elements.detailHeading.textContent = device.display_name;
             elements.detailSubheading.textContent = `${device.ip} · ${device.device_type} · ${device.os_name}`;
+            syncDetailDraftFromDevice(device);
             elements.detailSummary.innerHTML = `
                 <div class="tag">CPU <strong>${formatPercent(device.cpu_usage_percent)}</strong></div>
                 <div class="tag">内存 <strong>${formatPercent(device.mem_used_percent)}</strong></div>
@@ -2157,8 +2493,8 @@
             `;
             elements.detailGrid.innerHTML = buildDetailItems(device).map(([label, value]) => `
                 <div class="detail">
-                    <div class="detail-label">${label}</div>
-                    <div class="detail-value">${value || 'N/A'}</div>
+                    <div class="detail-label">${escapeHtml(label)}</div>
+                    <div class="detail-value">${escapeHtml(value || 'N/A')}</div>
                 </div>
             `).join('');
             elements.detailModal.classList.add('open');
@@ -2166,11 +2502,19 @@
 
         function openDeviceDetail(ip) {
             state.detailDeviceIp = ip;
+            state.detailDraftIp = null;
+            state.detailMetadataDirty = false;
             renderDetailModal();
         }
 
         function closeDeviceDetail() {
             state.detailDeviceIp = null;
+            state.detailDraftIp = null;
+            state.detailDraftTitle = '';
+            state.detailDraftNote = '';
+            state.detailMetadataDirty = false;
+            state.detailMetadataSaving = false;
+            setDetailEditorStatus('');
             elements.detailModal.classList.remove('open');
         }
 
@@ -2186,9 +2530,7 @@
                 renderDevices();
                 syncSelectedCount();
                 if (elements.updateModal.classList.contains('open')) {
-                    const selectedDevices = getSelectedDevices();
-                    elements.updateHeading.textContent = `群发更新 · ${selectedDevices.length} 台设备`;
-                    renderUpdateTargets(selectedDevices);
+                    refreshUpdateSelectionPreview();
                 }
                 renderDetailModal();
             } catch (_) {
@@ -2218,14 +2560,16 @@
 
         function renderUpdateJob(job = null) {
             if (!job) {
+                state.updateJobStatus = null;
                 elements.updateStatus.textContent = '尚未启动更新任务。';
-                elements.updateResults.innerHTML = '<div class="empty"><h3>等待任务启动</h3><p>选择设备并填写凭据后，即可批量更新。</p></div>';
+                elements.updateResults.innerHTML = '<div class="empty"><h3>等待任务启动</h3><p>选择在线设备或手动输入 IP，并填写凭据后，即可批量安装 / 更新。</p></div>';
                 elements.btnUpdateRefresh.disabled = !state.updateJobId;
-                elements.btnUpdateStart.disabled = getSelectedDevices().length === 0;
+                elements.btnUpdateStart.disabled = buildUpdateTargetEntries().length === 0;
                 return;
             }
 
             state.updateJobId = job.job_id;
+            state.updateJobStatus = job.status || null;
             const statusClass = updateStatusClass(job.status);
             elements.updateStatus.innerHTML = `
                 <span class="status-chip ${statusClass}">${updateStatusLabel(job.status)}</span>
@@ -2301,17 +2645,15 @@
             }
         }
 
-        function openUpdateModal() {
+        function openUpdateModal(options = {}) {
             const selectedDevices = getSelectedDevices();
-            if (!selectedDevices.length) {
+            if (!selectedDevices.length && !options.allowEmptySelection) {
                 showToast('请先选择要更新的设备');
                 return;
             }
-            elements.updateHeading.textContent = `群发更新 · ${selectedDevices.length} 台设备`;
-            elements.updateSubheading.textContent = 'Dashboard 会先生成最新更新包，再按 SSH/Telnet 下发，并最终调用 install.sh 保持 service / S90 / nohup 兼容。';
-            renderUpdateTargets(selectedDevices);
             prefillUpdateForm(selectedDevices);
             elements.updateModal.classList.add('open');
+            refreshUpdateSelectionPreview();
             if (state.updateJobId) {
                 fetchUpdateJobStatus(state.updateJobId, true).then((job) => {
                     if (job && (job.status === 'queued' || job.status === 'running')) {
@@ -2338,8 +2680,9 @@
 
         async function startBatchUpdate() {
             const selectedDevices = getSelectedDevices();
-            if (!selectedDevices.length) {
-                showToast('请先选择要更新的设备');
+            const manualTargets = getManualTargetsFromForm();
+            if (!selectedDevices.length && !manualTargets.length) {
+                showToast('请先选择设备，或手动输入要安装的 IP / 主机');
                 return;
             }
 
@@ -2352,6 +2695,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         targets: selectedDevices.map((device) => device.ip),
+                        manual_targets: manualTargets,
                         strategy: profile.strategy,
                         parallelism: profile.parallelism,
                         dashboard_origin: window.location.origin,
@@ -2380,7 +2724,7 @@
                 state.updateJobId = payload.job_id;
                 renderUpdateJob(payload);
                 pollUpdateJob(payload.job_id);
-                showToast('群发更新任务已启动');
+                showToast(manualTargets.length ? '远程安装 / 更新任务已启动' : '群发更新任务已启动');
             } catch (error) {
                 elements.btnUpdateStart.disabled = false;
                 showToast(error.message || '创建更新任务失败');
@@ -2823,13 +3167,19 @@
 
         document.getElementById('btn-terminal-close').addEventListener('click', closeModal);
         document.getElementById('btn-detail-close').addEventListener('click', closeDeviceDetail);
+        elements.btnDetailSave.addEventListener('click', () => saveDeviceMetadata(false));
+        elements.btnDetailReset.addEventListener('click', () => saveDeviceMetadata(true));
+        elements.detailTitleInput.addEventListener('input', handleDetailDraftInput);
+        elements.detailNoteInput.addEventListener('input', handleDetailDraftInput);
         document.getElementById('btn-terminal-connect').addEventListener('click', connectFromForm);
         elements.btnSelectAll.addEventListener('click', selectAllDevices);
         elements.btnClearSelection.addEventListener('click', clearSelection);
-        elements.btnOpenUpdate.addEventListener('click', openUpdateModal);
+        elements.btnOpenInstall.addEventListener('click', () => openUpdateModal({ allowEmptySelection: true }));
+        elements.btnOpenUpdate.addEventListener('click', () => openUpdateModal({ allowEmptySelection: false }));
         elements.btnUpdateClose.addEventListener('click', closeUpdateModal);
         elements.btnUpdateStart.addEventListener('click', startBatchUpdate);
         elements.btnUpdateRefresh.addEventListener('click', refreshUpdateJob);
+        elements.updateManualTargets.addEventListener('input', refreshUpdateSelectionPreview);
         elements.btnCtrlC.addEventListener('click', () => queueTerminalInput('\u0003'));
         elements.btnCtrlD.addEventListener('click', () => queueTerminalInput('\u0004'));
         elements.btnClearView.addEventListener('click', () => {
@@ -2872,6 +3222,7 @@
         });
 
         syncSelectedCount();
+        syncDetailEditorButtons();
         renderUpdateJob(null);
         refreshDevices();
         setInterval(refreshDevices, 2000);
