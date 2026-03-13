@@ -35,9 +35,20 @@ else
 fi
 
 CRON_MARKER="# broadcast.axera ${APP_NAME}"
+PACKAGE_VERSION="${DEVICE_BROADCAST_PACKAGE_VERSION:-}"
 
 log() {
     printf '%s\n' "$*"
+}
+
+write_version_file() {
+    TARGET_PATH="$1"
+    [ -n "$PACKAGE_VERSION" ] || return 0
+    [ -n "$TARGET_PATH" ] || return 0
+
+    TARGET_DIR="$(dirname "$TARGET_PATH")"
+    mkdir -p "$TARGET_DIR" >/dev/null 2>&1 || return 0
+    printf '%s\n' "$PACKAGE_VERSION" > "$TARGET_PATH" 2>/dev/null || return 0
 }
 
 prepare_writable_dir() {
@@ -221,6 +232,17 @@ ensure_paths() {
 
     if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
         chown -R "$TARGET_USER:$TARGET_GROUP" "$STATE_DIR" "$LOG_DIR"
+    fi
+}
+
+write_version_markers() {
+    [ -n "$PACKAGE_VERSION" ] || return 0
+
+    write_version_file "$STATE_DIR/version"
+    write_version_file "$APP_PATH.version"
+
+    if [ "$(id -u)" -eq 0 ]; then
+        write_version_file "/etc/${APP_NAME}.version"
     fi
 }
 
@@ -507,12 +529,17 @@ main() {
         install_nohup_only
     fi
 
+    write_version_markers
+
     log
     log "Install completed."
     log "Binary: $APP_PATH"
     log "Runner: $RUNNER_PATH"
     log "Log file: $LOG_FILE"
     log "Persistence: $PERSISTENCE_MODE"
+    if [ -n "$PACKAGE_VERSION" ]; then
+        log "Package version: $PACKAGE_VERSION"
+    fi
 }
 
 main "$@"

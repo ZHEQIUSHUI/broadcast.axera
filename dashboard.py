@@ -26,9 +26,15 @@ POLL_WAIT_MS = int(os.getenv("TERMINAL_POLL_WAIT_MS", "350"))
 WEBSSH2_ENABLED = os.getenv("WEBSSH2_ENABLED", "1").lower() not in ("0", "false", "no")
 WEBSSH2_URL_TEMPLATE = os.getenv("WEBSSH2_URL_TEMPLATE", "http://{dashboard_host}:2222/ssh/host/{host}")
 UPDATE_JOB_RETENTION_SECONDS = int(os.getenv("UPDATE_JOB_RETENTION_SECONDS", "3600"))
-UPDATE_MAX_PARALLEL = int(os.getenv("UPDATE_MAX_PARALLEL", "4"))
+UPDATE_MAX_PARALLEL = int(os.getenv("UPDATE_MAX_PARALLEL", "12"))
 UPDATE_REMOTE_TIMEOUT_SECONDS = int(os.getenv("UPDATE_REMOTE_TIMEOUT_SECONDS", "480"))
 UPDATE_LOG_LIMIT = int(os.getenv("UPDATE_LOG_LIMIT", "60000"))
+UPDATE_SCAN_PORT_TIMEOUT_SECONDS = float(os.getenv("UPDATE_SCAN_PORT_TIMEOUT_SECONDS", "1.0"))
+UPDATE_CONNECT_TIMEOUT_SECONDS = int(os.getenv("UPDATE_CONNECT_TIMEOUT_SECONDS", "8"))
+UPDATE_PROBE_TIMEOUT_SECONDS = int(os.getenv("UPDATE_PROBE_TIMEOUT_SECONDS", "20"))
+UPDATE_TELNET_READY_TIMEOUT_SECONDS = int(os.getenv("UPDATE_TELNET_READY_TIMEOUT_SECONDS", "12"))
+UPDATE_PING_TIMEOUT_SECONDS = int(os.getenv("UPDATE_PING_TIMEOUT_SECONDS", "1"))
+UPDATE_SCAN_MAX_PARALLEL = int(os.getenv("UPDATE_SCAN_MAX_PARALLEL", "16"))
 
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 RUNTIME_ROOT = os.path.join(APP_ROOT, ".runtime")
@@ -38,6 +44,10 @@ DEVICE_METADATA_PATH = os.path.join(RUNTIME_ROOT, "device_metadata.json")
 ANSI_OSC_RE = re.compile(r"\x1b\][^\x07]*(?:\x07|\x1b\\)")
 ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 ANSI_SINGLE_RE = re.compile(r"\x1b[@-_]")
+PACKAGE_VERSION_RE = re.compile(r"^(\d{8})(?:[-_]?(\d{6}))?$")
+SUBNET_SHORT_RE = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
+SUBNET_WILDCARD_RE = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(?:x|\*|1-255)$", re.IGNORECASE)
+SUBNET_CIDR_RE = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.0/24$", re.IGNORECASE)
 
 TELNET_IAC = 255
 TELNET_DONT = 254
@@ -140,6 +150,175 @@ def clamp_int(value, minimum, maximum, fallback):
     if parsed is None:
         return fallback
     return max(minimum, min(maximum, parsed))
+
+
+def is_valid_ipv4_octet(value):
+    parsed = safe_int(value)
+    return parsed is not None and 0 <= parsed <= 255
+
+
+def is_valid_ipv4_host(value):
+    text = clean_text(value)
+    parts = text.split(".")
+    return len(parts) == 4 and all(is_valid_ipv4_octet(part) for part in parts)
+
+
+def expand_subnet_expression(value):
+    text = clean_text(value).lower()
+    if not text:
+        return []
+
+    match = SUBNET_SHORT_RE.match(text) or SUBNET_WILDCARD_RE.match(text) or SUBNET_CIDR_RE.match(text)
+    if not match:
+        return []
+
+    octets = match.groups()
+    if not all(is_valid_ipv4_octet(item) for item in octets):
+        return []
+
+    prefix = ".".join(str(int(item)) for item in octets)
+    return [f"{prefix}.{index}" for index in range(1, 256)]
+
+
+def is_subnet_expression(value):
+    return bool(expand_subnet_expression(value))
+
+
+def normalize_subnet_targets(raw_targets):
+    patterns = normalize_target_hosts(raw_targets)
+    hosts = []
+    invalid = []
+    seen = set()
+
+    for pattern in patterns:
+        expanded = expand_subnet_expression(pattern)
+        if not expanded:
+            invalid.append(pattern)
+            continue
+        for host in expanded:
+            if host in seen:
+                continue
+            seen.add(host)
+            hosts.append(host)
+
+    return hosts, invalid
+
+
+def parse_credential_candidate_text(value):
+    text = clean_text(value)
+    if not text:
+        return None
+
+    username = ""
+    password = ""
+    if re.search(r"\s", text):
+        parts = text.split()
+        username = clean_text(parts[0]) if parts else ""
+        password = " ".join(parts[1:]) if len(parts) > 1 else ""
+    elif ":" in text:
+        username, _, password = text.partition(":")
+        username = clean_text(username)
+    elif "," in text:
+        username, _, password = text.partition(",")
+        username = clean_text(username)
+    else:
+        username = text
+
+    if not username and not password:
+        return None
+    return {"username": username, "password": password}
+
+
+def normalize_credential_candidates(raw_candidates):
+    if not isinstance(raw_candidates, list):
+        return []
+
+    candidates = []
+    seen = set()
+    for item in raw_candidates:
+        if isinstance(item, dict):
+            candidate = {
+                "username": clean_text(item.get("username")),
+                "password": "" if item.get("password") is None else str(item.get("password")),
+            }
+            if not candidate["username"] and not candidate["password"]:
+                continue
+        elif isinstance(item, str):
+            candidate = parse_credential_candidate_text(item)
+            if not candidate:
+                continue
+        else:
+            continue
+
+        key = (candidate["username"], candidate["password"])
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(candidate)
+
+    return candidates
+
+
+def normalize_package_version(value):
+    text = clean_text(value)
+    if not text:
+        return ""
+    match = PACKAGE_VERSION_RE.match(text)
+    if not match:
+        return text
+    return f"{match.group(1)}{match.group(2) or '000000'}"
+
+
+def compare_package_versions(current_version, target_version):
+    current_key = normalize_package_version(current_version)
+    target_key = normalize_package_version(target_version)
+    if not current_key and not target_key:
+        return 0
+    if not current_key:
+        return -1
+    if not target_key:
+        return 1
+    if current_key < target_key:
+        return -1
+    if current_key > target_key:
+        return 1
+    return 0
+
+
+def is_port_open(host, port, timeout_seconds=UPDATE_SCAN_PORT_TIMEOUT_SECONDS):
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
+
+
+def ping_host(host, timeout_seconds=UPDATE_PING_TIMEOUT_SECONDS):
+    host = clean_text(host)
+    if not host:
+        return {"attempted": False, "ok": False, "message": "主机为空"}
+
+    try:
+        result = subprocess.run(
+            ["ping", "-n", "-c", "1", "-W", str(max(1, int(timeout_seconds))), host],
+            capture_output=True,
+            text=True,
+            timeout=max(2, int(timeout_seconds) + 1),
+            check=False,
+        )
+    except FileNotFoundError:
+        return {"attempted": False, "ok": None, "message": "本机未找到 ping，跳过 ICMP 探活"}
+    except subprocess.TimeoutExpired:
+        return {"attempted": True, "ok": False, "message": f"ping {host} 超时"}
+    except Exception as exc:
+        return {"attempted": True, "ok": False, "message": f"ping 失败: {exc}"}
+
+    if result.returncode == 0:
+        return {"attempted": True, "ok": True, "message": f"ping {host} 可达"}
+
+    output = sanitize_terminal_text((result.stdout or "") + (result.stderr or ""))
+    summary = output.strip().splitlines()[-1] if output.strip() else f"ping {host} 无响应"
+    return {"attempted": True, "ok": False, "message": summary}
 
 
 def tail_text(text, limit=UPDATE_LOG_LIMIT):
@@ -432,7 +611,7 @@ def get_online_devices_by_ip():
         return {ip: dict(device) for ip, device in online_devices.items()}
 
 
-def create_update_target_snapshot(device):
+def create_update_target_snapshot(device, source="online"):
     return {
         "ip": device["ip"],
         "display_name": device.get("display_name") or device["ip"],
@@ -440,20 +619,20 @@ def create_update_target_snapshot(device):
         "device_type": device.get("device_type") or "Generic Linux",
         "device_kind": device.get("device_kind") or "generic_linux",
         "os_name": device.get("os_name") or "Linux",
-        "source": "online",
+        "source": source,
     }
 
 
-def create_manual_target_snapshot(host, default_user="root"):
+def create_manual_target_snapshot(host, default_user="root", source="manual"):
     host = clean_text(host)
     return {
         "ip": host,
         "display_name": host,
         "default_user": clean_text(default_user, "root") or "root",
         "device_type": "远程安装目标",
-        "device_kind": "manual_target",
+        "device_kind": "subnet_target" if source == "subnet" else "manual_target",
         "os_name": "待连接",
-        "source": "manual",
+        "source": source,
     }
 
 
@@ -485,6 +664,7 @@ def build_update_job_public(job_id, targets, strategy, parallelism):
         "target_count": len(targets),
         "completed_count": 0,
         "success_count": 0,
+        "skipped_count": 0,
         "failed_count": 0,
         "bundle_ready": False,
         "bundle_version": None,
@@ -500,6 +680,8 @@ def build_update_job_public(job_id, targets, strategy, parallelism):
                 "status": "pending",
                 "transport": None,
                 "message": "等待开始",
+                "action": None,
+                "detected_version": "",
                 "started_at": None,
                 "finished_at": None,
                 "attempts": [],
@@ -518,8 +700,9 @@ def find_update_target(job, ip_address):
 
 
 def recompute_update_job_counts(job):
-    job["completed_count"] = sum(1 for item in job["targets"] if item["status"] in ("success", "failed"))
+    job["completed_count"] = sum(1 for item in job["targets"] if item["status"] in ("success", "skipped", "failed"))
     job["success_count"] = sum(1 for item in job["targets"] if item["status"] == "success")
+    job["skipped_count"] = sum(1 for item in job["targets"] if item["status"] == "skipped")
     job["failed_count"] = sum(1 for item in job["targets"] if item["status"] == "failed")
 
 
@@ -547,7 +730,7 @@ def mark_update_job_failed(job_id, error_message):
         job["error"] = error_message
         job["finished_at"] = time.time()
         for target in job["targets"]:
-            if target["status"] == "pending":
+            if target["status"] in ("pending", "running"):
                 target["status"] = "failed"
                 target["message"] = error_message
                 target["finished_at"] = time.time()
@@ -562,7 +745,7 @@ def finish_update_job(job_id):
         if job["status"] == "failed" and job["failed_count"] == 0:
             job["failed_count"] = job["target_count"]
         elif job["failed_count"] > 0:
-            job["status"] = "partial_success" if job["success_count"] > 0 else "failed"
+            job["status"] = "partial_success" if job["success_count"] > 0 or job["skipped_count"] > 0 else "failed"
         else:
             job["status"] = "success"
         job["finished_at"] = time.time()
@@ -647,6 +830,8 @@ def udp_listener():
                 history = existing.get("history")
                 if history:
                     normalized["history"] = history
+                normalized["first_seen"] = existing.get("first_seen", normalized["last_seen"])
+                normalized["first_seen_str"] = existing.get("first_seen_str", normalized["last_seen_str"])
                 update_device_history(normalized)
                 online_devices[ip_address] = normalized
         except json.JSONDecodeError:
@@ -1051,13 +1236,153 @@ def collect_paramiko_command_output(channel, timeout_seconds):
             time.sleep(0.08)
 
 
-def build_remote_install_script(workdir, archive_path, login_user, use_sudo, sudo_password):
+def build_remote_probe_script():
+    return """set +e
+APP_NAME=device_broadcast
+APP_PATH=""
+VERSION_PATH=""
+PACKAGE_VERSION=""
+HOME_DIR="${HOME:-}"
+
+pick_app_path() {
+    candidate="$1"
+    if [ -z "$APP_PATH" ] && [ -n "$candidate" ] && [ -x "$candidate" ]; then
+        APP_PATH="$candidate"
+    fi
+}
+
+pick_version_path() {
+    candidate="$1"
+    if [ -z "$VERSION_PATH" ] && [ -n "$candidate" ] && [ -f "$candidate" ]; then
+        VERSION_PATH="$candidate"
+    fi
+}
+
+emit() {
+    key="$1"
+    value="$2"
+    printf 'BAX_%s=%s\n' "$key" "$(printf '%s' "$value" | tr -d '\r\n')"
+}
+
+if command -v "$APP_NAME" >/dev/null 2>&1; then
+    APP_PATH="$(command -v "$APP_NAME" 2>/dev/null | head -n 1 | tr -d '\r\n')"
+fi
+
+pick_app_path "/usr/bin/device_broadcast"
+pick_app_path "/usr/local/bin/device_broadcast"
+pick_app_path "/customer/bin/device_broadcast"
+pick_app_path "/customer/dell/bin/device_broadcast"
+pick_app_path "/tmp/device_broadcast/bin/device_broadcast"
+
+if [ -n "$HOME_DIR" ]; then
+    pick_app_path "$HOME_DIR/.local/bin/device_broadcast"
+fi
+
+if [ -n "$APP_PATH" ]; then
+    pick_version_path "${APP_PATH}.version"
+fi
+
+pick_version_path "/etc/device_broadcast.version"
+pick_version_path "/var/lib/device_broadcast/version"
+pick_version_path "/customer/device_broadcast/version"
+pick_version_path "/customer/dell/device_broadcast/version"
+pick_version_path "/tmp/device_broadcast/state/version"
+
+if [ -n "$HOME_DIR" ]; then
+    pick_version_path "$HOME_DIR/.local/share/device_broadcast/version"
+    pick_version_path "$HOME_DIR/.local/state/device_broadcast/version"
+fi
+
+if [ -n "$VERSION_PATH" ] && [ -r "$VERSION_PATH" ]; then
+    PACKAGE_VERSION="$(head -n 1 "$VERSION_PATH" 2>/dev/null | tr -d '\r\n')"
+fi
+
+INSTALLED=0
+if [ -n "$APP_PATH" ] || [ -n "$PACKAGE_VERSION" ]; then
+    INSTALLED=1
+fi
+
+if [ "$INSTALLED" = "0" ] && [ -f "/etc/systemd/system/device_broadcast.service" ]; then
+    INSTALLED=1
+fi
+if [ "$INSTALLED" = "0" ] && [ -x "/etc/init.d/S90device_broadcast" ]; then
+    INSTALLED=1
+fi
+if [ "$INSTALLED" = "0" ] && [ -n "$HOME_DIR" ] && [ -f "$HOME_DIR/.config/systemd/user/device_broadcast.service" ]; then
+    INSTALLED=1
+fi
+
+emit installed "$INSTALLED"
+emit app_path "$APP_PATH"
+emit version_path "$VERSION_PATH"
+emit package_version "$PACKAGE_VERSION"
+emit login_user "$(id -un 2>/dev/null || true)"
+emit machine "$(uname -m 2>/dev/null || true)"
+"""
+
+
+def parse_remote_probe_output(output):
+    probe = {
+        "installed": False,
+        "app_path": "",
+        "version_path": "",
+        "package_version": "",
+        "login_user": "",
+        "machine": "",
+        "raw_output": tail_text(output),
+    }
+    for line in (output or "").splitlines():
+        if not line.startswith("BAX_"):
+            continue
+        key, _, value = line[4:].partition("=")
+        probe[key] = clean_text(value)
+    probe["installed"] = str(probe.get("installed", "")).strip() == "1"
+    return probe
+
+
+def run_script_over_ssh(client, script_text, timeout_seconds):
+    stdin, stdout, _ = client.exec_command("sh -s")
+    stdin.write(script_text)
+    stdin.flush()
+    stdin.channel.shutdown_write()
+    return collect_paramiko_command_output(stdout.channel, timeout_seconds)
+
+
+def decide_remote_action(probe, bundle_version):
+    remote_version = clean_text(probe.get("package_version"))
+    if not probe.get("installed"):
+        return {
+            "action": "install",
+            "message": "未检测到 agent，准备安装",
+            "detected_version": remote_version,
+        }
+    if not remote_version:
+        return {
+            "action": "update",
+            "message": "已检测到 agent，但没有版本标记，执行覆盖更新",
+            "detected_version": "",
+        }
+    if compare_package_versions(remote_version, bundle_version) >= 0:
+        return {
+            "action": "skip",
+            "message": f"已安装版本 {remote_version}，不低于当前包 {bundle_version}",
+            "detected_version": remote_version,
+        }
+    return {
+        "action": "update",
+        "message": f"检测到旧版本 {remote_version}，升级到 {bundle_version}",
+        "detected_version": remote_version,
+    }
+
+
+def build_remote_install_script(workdir, archive_path, login_user, use_sudo, sudo_password, bundle_version):
     workdir_q = shlex.quote(workdir)
     archive_q = shlex.quote(archive_path)
     bundle_dir_q = shlex.quote(os.path.join(workdir, "broadcast.axera_update"))
     login_user_q = shlex.quote(login_user or "root")
     use_sudo_q = shlex.quote("1" if use_sudo else "0")
     sudo_password_q = shlex.quote(sudo_password or "")
+    bundle_version_q = shlex.quote(bundle_version or "")
 
     return f"""set -eu
 WORKDIR={workdir_q}
@@ -1066,6 +1391,7 @@ BUNDLE_DIR={bundle_dir_q}
 LOGIN_USER={login_user_q}
 USE_SUDO={use_sudo_q}
 SUDO_PASSWORD={sudo_password_q}
+PACKAGE_VERSION={bundle_version_q}
 
 extract_archive() {{
     if command -v tar >/dev/null 2>&1; then
@@ -1084,15 +1410,16 @@ run_install() {{
     cd "$BUNDLE_DIR"
     chmod +x install.sh build.sh >/dev/null 2>&1 || true
     export DEVICE_BROADCAST_USER="$LOGIN_USER"
+    export DEVICE_BROADCAST_PACKAGE_VERSION="$PACKAGE_VERSION"
     if [ "$(id -u)" -eq 0 ]; then
         sh ./install.sh
         return $?
     fi
     if [ "$USE_SUDO" = "1" ] && command -v sudo >/dev/null 2>&1; then
         if [ -n "$SUDO_PASSWORD" ]; then
-            printf '%s\\n' "$SUDO_PASSWORD" | sudo -S env DEVICE_BROADCAST_USER="$DEVICE_BROADCAST_USER" sh ./install.sh
+            printf '%s\\n' "$SUDO_PASSWORD" | sudo -S env DEVICE_BROADCAST_USER="$DEVICE_BROADCAST_USER" DEVICE_BROADCAST_PACKAGE_VERSION="$DEVICE_BROADCAST_PACKAGE_VERSION" sh ./install.sh
         else
-            sudo env DEVICE_BROADCAST_USER="$DEVICE_BROADCAST_USER" sh ./install.sh
+            sudo env DEVICE_BROADCAST_USER="$DEVICE_BROADCAST_USER" DEVICE_BROADCAST_PACKAGE_VERSION="$DEVICE_BROADCAST_PACKAGE_VERSION" sh ./install.sh
         fi
         return $?
     fi
@@ -1176,11 +1503,12 @@ download_archive
 
 
 class ScriptedTelnetClient:
-    def __init__(self, host, port=23, username="", password=None):
+    def __init__(self, host, port=23, username="", password=None, connect_timeout=UPDATE_CONNECT_TIMEOUT_SECONDS):
         self.host = host
         self.port = port or 23
         self.username = username or ""
         self.password = password or ""
+        self.connect_timeout = connect_timeout
         self.sock = None
         self.pending = bytearray()
         self.auto_prompt_tail = ""
@@ -1188,7 +1516,7 @@ class ScriptedTelnetClient:
         self.password_sent = False
 
     def connect(self):
-        self.sock = socket.create_connection((self.host, self.port), timeout=12)
+        self.sock = socket.create_connection((self.host, self.port), timeout=self.connect_timeout)
         self.sock.settimeout(0.25)
 
     def close(self):
@@ -1274,6 +1602,8 @@ class ScriptedTelnetClient:
             if not raw:
                 raise RuntimeError("telnet connection closed")
         except socket.timeout:
+            return ""
+        except BlockingIOError:
             return ""
         decoded_bytes = self._negotiate(raw)
         if not decoded_bytes:
@@ -1373,9 +1703,9 @@ def connect_ssh_client(host, username, port, password):
         "hostname": host,
         "port": port or 22,
         "username": username,
-        "timeout": 12,
-        "banner_timeout": 12,
-        "auth_timeout": 12,
+        "timeout": UPDATE_CONNECT_TIMEOUT_SECONDS,
+        "banner_timeout": UPDATE_CONNECT_TIMEOUT_SECONDS,
+        "auth_timeout": UPDATE_CONNECT_TIMEOUT_SECONDS,
     }
     if password:
         kwargs.update({"password": password, "allow_agent": False, "look_for_keys": False})
@@ -1383,6 +1713,20 @@ def connect_ssh_client(host, username, port, password):
         kwargs.update({"allow_agent": True, "look_for_keys": True})
     client.connect(**kwargs)
     return client
+
+
+def probe_remote_over_ssh(client):
+    rc, output = run_script_over_ssh(client, build_remote_probe_script(), UPDATE_PROBE_TIMEOUT_SECONDS)
+    if rc != 0:
+        raise RuntimeError(output or f"ssh probe exited with {rc}")
+    return parse_remote_probe_output(output)
+
+
+def probe_remote_over_telnet(client):
+    rc, output = client.run_script(build_remote_probe_script(), UPDATE_PROBE_TIMEOUT_SECONDS)
+    if rc != 0:
+        raise RuntimeError(output or f"telnet probe exited with {rc}")
+    return parse_remote_probe_output(output)
 
 
 def execute_update_over_ssh(target, ssh_config, sudo_config, bundle):
@@ -1393,16 +1737,33 @@ def execute_update_over_ssh(target, ssh_config, sudo_config, bundle):
     sudo_password = sudo_config.get("password") or password or ""
     remote_workdir = f"/tmp/broadcast.axera_update_{uuid.uuid4().hex[:10]}"
     remote_archive = f"{remote_workdir}/device_broadcast_update.tar.gz"
-    script = build_remote_install_script(
-        workdir=remote_workdir,
-        archive_path=remote_archive,
-        login_user=username,
-        use_sudo=use_sudo,
-        sudo_password=sudo_password,
-    )
+
+    if not is_port_open(target["ip"], port):
+        raise RuntimeError(f"端口 {port} 不可达")
 
     client = connect_ssh_client(target["ip"], username=username, port=port, password=password)
     try:
+        probe = probe_remote_over_ssh(client)
+        action = decide_remote_action(probe, bundle["version"])
+        if action["action"] == "skip":
+            return {
+                "transport": "ssh",
+                "status": "skipped",
+                "action": action["action"],
+                "message": action["message"],
+                "detected_version": action.get("detected_version", ""),
+                "log": probe.get("raw_output", ""),
+            }
+
+        script = build_remote_install_script(
+            workdir=remote_workdir,
+            archive_path=remote_archive,
+            login_user=username,
+            use_sudo=use_sudo,
+            sudo_password=sudo_password,
+            bundle_version=bundle["version"],
+        )
+
         _, stdout, _ = client.exec_command(f"mkdir -p {shlex.quote(remote_workdir)}")
         mkdir_rc, mkdir_output = collect_paramiko_command_output(stdout.channel, 20)
         if mkdir_rc != 0:
@@ -1414,23 +1775,22 @@ def execute_update_over_ssh(target, ssh_config, sudo_config, bundle):
         finally:
             sftp.close()
 
-        stdin, stdout, _ = client.exec_command("sh -s")
-        stdin.write(script)
-        stdin.flush()
-        stdin.channel.shutdown_write()
-        rc, output = collect_paramiko_command_output(stdout.channel, UPDATE_REMOTE_TIMEOUT_SECONDS)
+        rc, output = run_script_over_ssh(client, script, UPDATE_REMOTE_TIMEOUT_SECONDS)
         if rc != 0:
             raise RuntimeError(output or f"remote install exited with {rc}")
         return {
             "transport": "ssh",
-            "message": "SSH 更新完成",
-            "log": output,
+            "status": "success",
+            "action": action["action"],
+            "message": "SSH 安装完成" if action["action"] == "install" else "SSH 更新完成",
+            "detected_version": action.get("detected_version", ""),
+            "log": tail_text("\n".join(filter(None, [probe.get("raw_output", ""), output]))),
         }
     finally:
         client.close()
 
 
-def execute_update_over_telnet(target, telnet_config, sudo_config, bundle_url):
+def execute_update_over_telnet(target, telnet_config, sudo_config, bundle):
     username = clean_text(telnet_config.get("username"), "")
     password = telnet_config.get("password") or ""
     port = safe_int(telnet_config.get("port")) or 23
@@ -1438,6 +1798,11 @@ def execute_update_over_telnet(target, telnet_config, sudo_config, bundle_url):
     sudo_password = sudo_config.get("password") or password or ""
     remote_workdir = f"/tmp/broadcast.axera_update_{uuid.uuid4().hex[:10]}"
     remote_archive = f"{remote_workdir}/device_broadcast_update.tar.gz"
+    bundle_url = bundle["url"]
+
+    if not is_port_open(target["ip"], port):
+        raise RuntimeError(f"端口 {port} 不可达")
+
     download_script = build_telnet_fetch_script(remote_workdir, remote_archive, bundle_url)
     install_script = build_remote_install_script(
         workdir=remote_workdir,
@@ -1445,22 +1810,48 @@ def execute_update_over_telnet(target, telnet_config, sudo_config, bundle_url):
         login_user=username or target.get("default_user") or "root",
         use_sudo=use_sudo,
         sudo_password=sudo_password,
+        bundle_version=bundle["version"],
     )
 
-    client = ScriptedTelnetClient(target["ip"], port=port, username=username, password=password)
+    client = ScriptedTelnetClient(
+        target["ip"],
+        port=port,
+        username=username,
+        password=password,
+        connect_timeout=UPDATE_CONNECT_TIMEOUT_SECONDS,
+    )
     try:
         client.connect()
-        probe_output = client.wait_for_probe(25)
+        ready_output = client.wait_for_probe(UPDATE_TELNET_READY_TIMEOUT_SECONDS)
+        probe = probe_remote_over_telnet(client)
+        action = decide_remote_action(probe, bundle["version"])
+        if action["action"] == "skip":
+            return {
+                "transport": "telnet",
+                "status": "skipped",
+                "action": action["action"],
+                "message": action["message"],
+                "detected_version": action.get("detected_version", ""),
+                "log": tail_text("\n".join(filter(None, [ready_output, probe.get("raw_output", "")]))),
+            }
+
         download_rc, download_output = client.run_script(download_script, UPDATE_REMOTE_TIMEOUT_SECONDS)
         if download_rc != 0:
-            raise RuntimeError((probe_output + "\n" + download_output).strip())
+            raise RuntimeError("\n".join(filter(None, [ready_output, probe.get("raw_output", ""), download_output])).strip())
         install_rc, install_output = client.run_script(install_script, UPDATE_REMOTE_TIMEOUT_SECONDS)
         if install_rc != 0:
-            raise RuntimeError((probe_output + "\n" + download_output + "\n" + install_output).strip())
+            raise RuntimeError(
+                "\n".join(filter(None, [ready_output, probe.get("raw_output", ""), download_output, install_output])).strip()
+            )
         return {
             "transport": "telnet",
-            "message": "Telnet 更新完成",
-            "log": tail_text("\n".join([probe_output, download_output, install_output])),
+            "status": "success",
+            "action": action["action"],
+            "message": "Telnet 安装完成" if action["action"] == "install" else "Telnet 更新完成",
+            "detected_version": action.get("detected_version", ""),
+            "log": tail_text(
+                "\n".join(filter(None, [ready_output, probe.get("raw_output", ""), download_output, install_output]))
+            ),
         }
     finally:
         client.close()
@@ -1479,31 +1870,286 @@ def build_transport_order(strategy):
     return ["ssh", "telnet"]
 
 
-def run_update_for_target(target, strategy, ssh_config, telnet_config, sudo_config, bundle, dashboard_origin, job_id):
+def merge_transport_credentials(ssh_config, telnet_config):
+    ssh_username = clean_text(ssh_config.get("username"), "")
+    ssh_password = ssh_config.get("password") or ""
+    telnet_username = clean_text(telnet_config.get("username"), "")
+    telnet_password = telnet_config.get("password") or ""
+
+    merged_ssh = {
+        "username": ssh_username or telnet_username,
+        "password": ssh_password or telnet_password,
+        "port": safe_int(ssh_config.get("port")) or 22,
+    }
+    merged_telnet = {
+        "username": telnet_username or ssh_username,
+        "password": telnet_password or ssh_password,
+        "port": safe_int(telnet_config.get("port")) or 23,
+    }
+    return merged_ssh, merged_telnet
+
+
+def build_transport_ports(strategy, ssh_config, telnet_config):
+    ports = {}
+    for transport in build_transport_order(strategy):
+        if transport == "ssh":
+            ports["ssh"] = safe_int(ssh_config.get("port")) or 22
+        elif transport == "telnet":
+            ports["telnet"] = safe_int(telnet_config.get("port")) or 23
+    return ports
+
+
+def build_transport_credential_candidates(transport, target, transport_config, shared_candidates):
+    default_port = 23 if transport == "telnet" else 22
+    default_username = clean_text(transport_config.get("username"))
+    if not default_username:
+        default_username = clean_text(target.get("default_user")) or "root"
+    default_password = transport_config.get("password") or ""
+    default_port = safe_int(transport_config.get("port")) or default_port
+
+    candidates = []
+    seen = set()
+
+    def add(username, password):
+        username = clean_text(username)
+        password = "" if password is None else str(password)
+        if not username and not password:
+            return
+        key = (username, password)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(
+            {
+                "username": username,
+                "password": password,
+                "port": default_port,
+            }
+        )
+
+    add(default_username, default_password)
+    for candidate in shared_candidates:
+        add(candidate.get("username"), candidate.get("password"))
+
+    if not candidates:
+        add(default_username or "root", "")
+
+    return candidates
+
+
+def preflight_target_connectivity(target, strategy, ssh_config, telnet_config):
+    host = target.get("ip")
     attempts = []
-    bundle_url = make_bundle_url(dashboard_origin, job_id, bundle["token"])
+    port_map = {}
+
+    for transport, port in build_transport_ports(strategy, ssh_config, telnet_config).items():
+        is_open = is_port_open(host, port)
+        port_map[transport] = is_open
+        attempts.append(
+            {
+                "transport": transport,
+                "ok": is_open,
+                "message": f"端口 {port} {'可达' if is_open else '不可达'}",
+            }
+        )
+
+    if port_map and not any(port_map.values()):
+        raise RuntimeError("SSH / Telnet 端口都不可达")
+
+    return attempts, port_map
+
+
+def run_quick_scan_for_target(target, strategy, ssh_config, telnet_config):
+    host = target.get("ip")
+    ping_result = ping_host(host)
+    attempts = []
+    port_map = {}
+
+    if ping_result.get("attempted"):
+        attempts.append(
+            {
+                "transport": "ping",
+                "ok": bool(ping_result.get("ok")),
+                "message": ping_result.get("message") or "ping 已执行",
+            }
+        )
+
+    for transport, port in build_transport_ports(strategy, ssh_config, telnet_config).items():
+        is_open = is_port_open(host, port)
+        port_map[transport] = is_open
+        attempts.append(
+            {
+                "transport": transport,
+                "ok": is_open,
+                "message": f"端口 {port} {'可达' if is_open else '不可达'}",
+            }
+        )
+
+    alive = bool(ping_result.get("ok")) or any(port_map.values())
+    if ping_result.get("ok"):
+        summary = ping_result.get("message") or "ping 可达"
+    elif port_map.get("ssh") and port_map.get("telnet"):
+        summary = "ping 无响应，但 SSH / Telnet 端口可达"
+    elif port_map.get("ssh"):
+        summary = "ping 无响应，但 SSH 端口可达"
+    elif port_map.get("telnet"):
+        summary = "ping 无响应，但 Telnet 端口可达"
+    else:
+        summary = ping_result.get("message") or "未发现在线机器"
+
+    return {
+        "alive": alive,
+        "summary": summary,
+        "attempts": attempts,
+        "port_map": port_map,
+    }
+
+
+def run_update_for_target(
+    target,
+    strategy,
+    ssh_config,
+    telnet_config,
+    credential_candidates,
+    sudo_config,
+    bundle,
+    dashboard_origin,
+    job_id,
+    base_attempts=None,
+):
+    attempts = list(base_attempts or [])
+    preflight_attempts, port_map = preflight_target_connectivity(target, strategy, ssh_config, telnet_config)
+    attempts.extend(preflight_attempts)
+    bundle_payload = dict(bundle)
+    bundle_payload["url"] = make_bundle_url(dashboard_origin, job_id, bundle["token"])
+
+    ssh_candidates = build_transport_credential_candidates("ssh", target, ssh_config, credential_candidates)
+    telnet_candidates = build_transport_credential_candidates("telnet", target, telnet_config, credential_candidates)
 
     for transport in build_transport_order(strategy):
-        try:
-            if transport == "ssh":
-                result = execute_update_over_ssh(target, ssh_config, sudo_config, bundle)
-            else:
-                result = execute_update_over_telnet(target, telnet_config, sudo_config, bundle_url)
-            attempts.append({"transport": transport, "ok": True, "message": result["message"]})
-            result["attempts"] = attempts
-            return result
-        except PasswordRequiredError:
-            attempts.append({"transport": transport, "ok": False, "message": "需要密码"})
-        except paramiko.AuthenticationException:
-            attempts.append({"transport": transport, "ok": False, "message": "认证失败"})
-        except Exception as exc:
-            attempts.append({"transport": transport, "ok": False, "message": str(exc)})
+        if transport in port_map and not port_map[transport]:
+            continue
+
+        transport_candidates = ssh_candidates if transport == "ssh" else telnet_candidates
+        for candidate in transport_candidates:
+            username = clean_text(candidate.get("username")) or clean_text(target.get("default_user")) or "root"
+            label = username or "<empty>"
+            config = {
+                "username": username,
+                "password": candidate.get("password") or "",
+                "port": safe_int(candidate.get("port")) or (22 if transport == "ssh" else 23),
+            }
+            try:
+                if transport == "ssh":
+                    result = execute_update_over_ssh(target, config, sudo_config, bundle_payload)
+                else:
+                    result = execute_update_over_telnet(target, config, sudo_config, bundle_payload)
+                attempts.append({"transport": transport, "ok": True, "message": f"{label} · {result['message']}"})
+                result["attempts"] = attempts
+                return result
+            except PasswordRequiredError:
+                attempts.append({"transport": transport, "ok": False, "message": f"{label} · 需要密码"})
+                continue
+            except paramiko.AuthenticationException:
+                attempts.append({"transport": transport, "ok": False, "message": f"{label} · 认证失败"})
+                continue
+            except PermissionError as exc:
+                if transport == "telnet":
+                    attempts.append({"transport": transport, "ok": False, "message": f"{label} · {exc}"})
+                    continue
+                attempts.append({"transport": transport, "ok": False, "message": f"{label} · {exc}"})
+                break
+            except Exception as exc:
+                attempts.append({"transport": transport, "ok": False, "message": f"{label} · {exc}"})
+                break
 
     combined = "\n\n".join(f"[{item['transport']}] {item['message']}" for item in attempts)
     raise RuntimeError(combined or "all update transports failed")
 
 
-def run_update_job(job_id, targets, strategy, parallelism, ssh_config, telnet_config, sudo_config, dashboard_origin):
+def run_update_job(
+    job_id,
+    targets,
+    strategy,
+    parallelism,
+    ssh_config,
+    telnet_config,
+    credential_candidates,
+    sudo_config,
+    dashboard_origin,
+):
+    with update_lock:
+        job = update_jobs.get(job_id)
+        if not job:
+            return
+        job["status"] = "running"
+        job["started_at"] = time.time()
+        job["bundle_ready"] = False
+        job["bundle_version"] = None
+        job["build_output"] = ""
+        job["bundle_token"] = None
+        job["bundle_path"] = None
+
+    for target in targets:
+        update_job_target_state(
+            job_id,
+            target["ip"],
+            status="running",
+            message="正在 ping 扫描",
+            action=None,
+            detected_version="",
+            started_at=time.time(),
+            finished_at=None,
+            transport=None,
+            attempts=[],
+            log="",
+        )
+
+    alive_targets = []
+    scan_workers = max(1, min(len(targets), UPDATE_SCAN_MAX_PARALLEL))
+    with ThreadPoolExecutor(max_workers=scan_workers) as executor:
+        future_map = {
+            executor.submit(run_quick_scan_for_target, target, strategy, dict(ssh_config), dict(telnet_config)): target
+            for target in targets
+        }
+        for future in as_completed(future_map):
+            target = future_map[future]
+            try:
+                scan_result = future.result()
+            except Exception as exc:
+                scan_result = {
+                    "alive": False,
+                    "summary": f"探测失败: {exc}",
+                    "attempts": [{"transport": "scan", "ok": False, "message": f"探测失败: {exc}"}],
+                    "port_map": {},
+                }
+
+            attempts = list(scan_result.get("attempts") or [])
+            if scan_result.get("alive"):
+                alive_targets.append((target, attempts))
+                update_job_target_state(
+                    job_id,
+                    target["ip"],
+                    status="running",
+                    message=f"{scan_result.get('summary') or '已发现在线机器'}，等待安装 / 更新",
+                    attempts=attempts,
+                    log=scan_result.get("summary", ""),
+                )
+            else:
+                update_job_target_state(
+                    job_id,
+                    target["ip"],
+                    status="failed",
+                    message=scan_result.get("summary") or "未发现在线机器",
+                    finished_at=time.time(),
+                    attempts=attempts,
+                    log=scan_result.get("summary", ""),
+                )
+
+    if not alive_targets:
+        finish_update_job(job_id)
+        return
+
     try:
         bundle = build_update_bundle(job_id)
     except Exception as exc:
@@ -1514,27 +2160,23 @@ def run_update_job(job_id, targets, strategy, parallelism, ssh_config, telnet_co
         job = update_jobs.get(job_id)
         if not job:
             return
-        job["status"] = "running"
-        job["started_at"] = time.time()
         job["bundle_ready"] = True
         job["bundle_version"] = bundle["version"]
         job["build_output"] = bundle["build_output"]
         job["bundle_token"] = bundle["token"]
         job["bundle_path"] = bundle["archive_path"]
 
-    max_workers = max(1, min(parallelism, len(targets), UPDATE_MAX_PARALLEL))
+    max_workers = max(1, min(parallelism, len(alive_targets), UPDATE_MAX_PARALLEL))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_map = {}
-        for target in targets:
+        for target, base_attempts in alive_targets:
             update_job_target_state(
                 job_id,
                 target["ip"],
                 status="running",
-                message="正在更新",
-                started_at=time.time(),
+                message="正在判断版本并安装 / 更新",
                 finished_at=None,
                 transport=None,
-                attempts=[],
                 log="",
             )
             future = executor.submit(
@@ -1543,10 +2185,12 @@ def run_update_job(job_id, targets, strategy, parallelism, ssh_config, telnet_co
                 strategy,
                 dict(ssh_config),
                 dict(telnet_config),
+                list(credential_candidates),
                 dict(sudo_config),
                 dict(bundle),
                 dashboard_origin,
                 job_id,
+                list(base_attempts),
             )
             future_map[future] = target
 
@@ -1557,9 +2201,11 @@ def run_update_job(job_id, targets, strategy, parallelism, ssh_config, telnet_co
                 update_job_target_state(
                     job_id,
                     target["ip"],
-                    status="success",
+                    status=result.get("status", "success"),
                     transport=result["transport"],
                     message=result["message"],
+                    action=result.get("action"),
+                    detected_version=result.get("detected_version", ""),
                     finished_at=time.time(),
                     attempts=result.get("attempts", []),
                     log=result.get("log", ""),
@@ -1738,18 +2384,32 @@ def api_update_create_job():
     body = request.get_json(silent=True) or {}
     target_ips = normalize_target_hosts(body.get("targets"))
     manual_hosts = normalize_target_hosts(body.get("manual_targets"))
+    subnet_patterns = normalize_target_hosts(body.get("subnet_targets"))
+    manual_exact_hosts = []
+    for host in manual_hosts:
+        if is_subnet_expression(host):
+            subnet_patterns.append(host)
+        else:
+            manual_exact_hosts.append(host)
+    manual_hosts = manual_exact_hosts
+    subnet_hosts, invalid_subnets = normalize_subnet_targets(subnet_patterns)
     strategy = clean_text(body.get("strategy"), "auto").lower()
     if strategy not in ("auto", "ssh", "telnet"):
         return jsonify({"error": "unsupported_strategy"}), 400
-    if not target_ips and not manual_hosts:
+    if invalid_subnets:
+        return jsonify({"error": "invalid_subnet_targets", "invalid": invalid_subnets}), 400
+    if not target_ips and not manual_hosts and not subnet_hosts:
         return jsonify({"error": "missing_targets"}), 400
 
     ssh_body = body.get("ssh") if isinstance(body.get("ssh"), dict) else {}
     telnet_body = body.get("telnet") if isinstance(body.get("telnet"), dict) else {}
+    credential_candidates = normalize_credential_candidates(body.get("credential_candidates"))
     sudo_body = body.get("sudo") if isinstance(body.get("sudo"), dict) else {}
+    merged_ssh_config, merged_telnet_config = merge_transport_credentials(ssh_body, telnet_body)
     manual_default_user = (
-        clean_text(ssh_body.get("username"))
-        or clean_text(telnet_body.get("username"))
+        clean_text(merged_ssh_config.get("username"))
+        or clean_text(merged_telnet_config.get("username"))
+        or (credential_candidates[0]["username"] if credential_candidates else "")
         or "root"
     )
 
@@ -1765,7 +2425,7 @@ def api_update_create_job():
         if not device:
             missing.append(ip_address)
             continue
-        targets.append(create_update_target_snapshot(device))
+        targets.append(create_update_target_snapshot(device, source="online"))
 
     for host in manual_hosts:
         if host in seen:
@@ -1773,9 +2433,19 @@ def api_update_create_job():
         seen.add(host)
         device = online_devices.get(host)
         if device:
-            targets.append(create_update_target_snapshot(device))
+            targets.append(create_update_target_snapshot(device, source="manual"))
         else:
             targets.append(create_manual_target_snapshot(host, manual_default_user))
+
+    for host in subnet_hosts:
+        if host in seen:
+            continue
+        seen.add(host)
+        device = online_devices.get(host)
+        if device:
+            targets.append(create_update_target_snapshot(device, source="subnet"))
+        else:
+            targets.append(create_manual_target_snapshot(host, manual_default_user, source="subnet"))
 
     if missing:
         return jsonify({"error": "devices_offline", "missing": missing}), 400
@@ -1803,15 +2473,16 @@ def api_update_create_job():
             strategy,
             parallelism,
             {
-                "username": clean_text(ssh_body.get("username"), ""),
-                "password": ssh_body.get("password") or "",
-                "port": safe_int(ssh_body.get("port")) or 22,
+                "username": clean_text(merged_ssh_config.get("username"), ""),
+                "password": merged_ssh_config.get("password") or "",
+                "port": safe_int(merged_ssh_config.get("port")) or 22,
             },
             {
-                "username": clean_text(telnet_body.get("username"), ""),
-                "password": telnet_body.get("password") or "",
-                "port": safe_int(telnet_body.get("port")) or 23,
+                "username": clean_text(merged_telnet_config.get("username"), ""),
+                "password": merged_telnet_config.get("password") or "",
+                "port": safe_int(merged_telnet_config.get("port")) or 23,
             },
+            credential_candidates,
             {
                 "enabled": bool(sudo_body.get("enabled")),
                 "password": sudo_body.get("password") or "",

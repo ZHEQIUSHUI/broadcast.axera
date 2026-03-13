@@ -9,6 +9,7 @@
 - 仪表盘支持动态设备卡片、指标历史曲线、网页 SSH 终端
 - SSH 终端支持浏览器本地保存密码，下次可直接进入
 - 支持网页批量更新：可选 `SSH / Telnet / 自动 SSH->Telnet 回退`
+- 支持远程安装网段扫描：可输入 `10.126.35.x / 10.126.35.0/24` 自动遍历 `1-255`
 - 批量更新最终统一调用 `install.sh`，继续兼容 `systemd / init.d(S90) / rc.local / crontab / nohup`
 
 ## 依赖
@@ -78,7 +79,10 @@ http://<dashboard-ip>:25000
 网页批量更新说明：
 
 - 在页面中勾选多台设备后，可直接发起“群发更新”
+- 远程安装界面支持输入网段，例如 `10.126.35.x`，Dashboard 会自动尝试登录该网段 `1-255` 主机
 - Dashboard 会先在本机执行 `build.sh`，然后生成最新更新包
+- 登录成功后会先探测目标机是否已安装 agent 以及已记录的包版本
+- 未安装则自动安装；版本缺失或低于当前包版本则更新；已是新版本则跳过
 - SSH 设备使用 `SFTP + install.sh`
 - Telnet 设备会通过 `wget/curl/busybox wget/python` 从 Dashboard 拉取更新包，再执行 `install.sh`
 - `install.sh` 仍会自动判断目标机是否能注册服务，不能时自动回退到 `nohup`

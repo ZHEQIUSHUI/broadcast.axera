@@ -269,6 +269,27 @@
             display: grid;
             gap: 12px;
             overflow: hidden;
+            position: relative;
+        }
+
+        .device-card.has-new {
+            padding-top: 42px;
+        }
+
+        .new-badge {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            background: #c62828;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            box-shadow: 0 10px 20px rgba(198, 40, 40, 0.22);
+            z-index: 1;
         }
 
         .device-top {
@@ -821,12 +842,43 @@
         }
 
         .update-status {
+            display: grid;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .update-status-row {
             display: flex;
             align-items: center;
             gap: 8px;
             flex-wrap: wrap;
+        }
+
+        .update-progress {
+            display: grid;
+            gap: 6px;
+        }
+
+        .update-progress-track {
+            height: 10px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(29, 39, 48, 0.08);
+        }
+
+        .update-progress-track > span {
+            display: block;
+            height: 100%;
+            width: 0;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--accent), #1d9e94);
+            transition: width 0.18s ease;
+        }
+
+        .update-progress-note {
+            font-size: 12px;
             color: var(--muted);
-            font-size: 13px;
         }
 
         .status-chip {
@@ -845,6 +897,11 @@
         .status-chip.success {
             background: rgba(15, 118, 110, 0.12);
             color: var(--accent);
+        }
+
+        .status-chip.skipped {
+            background: rgba(96, 112, 124, 0.12);
+            color: var(--muted);
         }
 
         .status-chip.failed {
@@ -870,6 +927,15 @@
             background: rgba(255, 255, 255, 0.68);
             display: grid;
             gap: 10px;
+        }
+
+        .update-results.compact {
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+
+        .update-result.compact {
+            padding: 12px;
+            gap: 8px;
         }
 
         .update-result-head {
@@ -1417,10 +1483,15 @@
                         <h4>目标设备</h4>
                         <div class="update-targets" id="update-targets"></div>
                         <label>
+                            网段扫描
+                            <textarea id="update-subnet-targets" placeholder="10.126.35.x&#10;10.126.36.0/24"></textarea>
+                        </label>
+                        <div class="update-note">支持 `10.126.35.x`、`10.126.35.*`、`10.126.35.0/24` 或 `10.126.35`，会自动展开为 `1-255` 并逐台尝试 SSH / Telnet 登录。</div>
+                        <label>
                             手动输入 IP / 主机
                             <textarea id="update-manual-targets" placeholder="10.126.33.210&#10;10.126.33.211"></textarea>
                         </label>
-                        <div class="update-note">适合还没安装 agent 的机器。支持换行、空格、逗号分隔，会和当前已选在线设备一起执行安装 / 更新。</div>
+                        <div class="update-note">适合单台首装或补充主机名。会和当前已选在线设备、网段扫描结果一起执行自动安装 / 更新。</div>
                         <div class="update-status" id="update-status">尚未启动更新任务。</div>
                         <div class="update-inline">
                             <button class="btn-primary" id="btn-update-start">开始安装 / 更新</button>
@@ -1446,6 +1517,7 @@
                                 <input id="update-ssh-password" type="password" placeholder="留空则尝试本机 SSH key/agent">
                             </label>
                         </div>
+                        <div class="update-note">如果 Telnet 用户名 / 密码留空，会自动继承这里填写的用户名 / 密码。</div>
                     </div>
                     <div class="update-card">
                         <h4>Telnet</h4>
@@ -1463,7 +1535,17 @@
                                 <input id="update-telnet-password" type="password" placeholder="按需填写">
                             </label>
                         </div>
+                        <div class="update-note">如果这里留空，会自动回退到 SSH 区填写的用户名 / 密码。</div>
                     </div>
+                </div>
+
+                <div class="update-card">
+                    <h4>多组账号密码</h4>
+                    <label>
+                        候选列表
+                        <textarea id="update-credential-candidates" placeholder="root 123456&#10;admin:admin&#10;user,password"></textarea>
+                    </label>
+                    <div class="update-note">按行尝试多组用户名 / 密码。支持 `用户名 空格 密码`、`用户名:密码`、`用户名,密码`。会在当前 SSH / Telnet 默认凭据之后继续尝试。</div>
                 </div>
 
                 <div class="update-card">
@@ -1480,6 +1562,8 @@
         const WEBSSH2_ENABLED = {{ 'true' if webssh2_enabled else 'false' }};
         const WEBSSH2_URL_TEMPLATE = {{ webssh2_url_template|tojson }};
         const UPDATE_MAX_PARALLEL = {{ update_max_parallel|int }};
+        const DEFAULT_REMOTE_USERNAME = 'root';
+        const DEFAULT_REMOTE_PASSWORD = '123456';
 
         const state = {
             devices: [],
@@ -1544,6 +1628,7 @@
             updateTelnetUser: document.getElementById('update-telnet-user'),
             updateTelnetPort: document.getElementById('update-telnet-port'),
             updateTelnetPassword: document.getElementById('update-telnet-password'),
+            updateCredentialCandidates: document.getElementById('update-credential-candidates'),
             btnSelectAll: document.getElementById('btn-select-all'),
             btnClearSelection: document.getElementById('btn-clear-selection'),
             btnOpenInstall: document.getElementById('btn-open-install'),
@@ -1551,6 +1636,7 @@
             btnUpdateClose: document.getElementById('btn-update-close'),
             btnUpdateStart: document.getElementById('btn-update-start'),
             btnUpdateRefresh: document.getElementById('btn-update-refresh'),
+            updateSubnetTargets: document.getElementById('update-subnet-targets'),
             updateManualTargets: document.getElementById('update-manual-targets'),
             modal: document.getElementById('terminal-modal'),
             terminalHeading: document.getElementById('terminal-heading'),
@@ -1912,11 +1998,116 @@
             return [...new Set(parts)];
         }
 
+        function isValidIpv4Octet(value) {
+            if (!/^\d+$/.test(String(value))) return false;
+            const parsed = Number(value);
+            return parsed >= 0 && parsed <= 255;
+        }
+
+        function expandSubnetExpression(value) {
+            const text = String(value || '').trim().toLowerCase();
+            if (!text) return [];
+
+            const match =
+                text.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/) ||
+                text.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(?:x|\*|1-255)$/i) ||
+                text.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.0\/24$/i);
+
+            if (!match) return [];
+
+            const octets = match.slice(1, 4);
+            if (!octets.every(isValidIpv4Octet)) return [];
+
+            const prefix = octets.map((item) => String(Number(item))).join('.');
+            return Array.from({ length: 255 }, (_, index) => `${prefix}.${index + 1}`);
+        }
+
+        function parseSubnetTargetsText(text) {
+            const patterns = String(text || '')
+                .split(/[\s,，;；]+/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+
+            const hosts = [];
+            const invalid = [];
+            const seen = new Set();
+
+            patterns.forEach((pattern) => {
+                const expanded = expandSubnetExpression(pattern);
+                if (!expanded.length) {
+                    invalid.push(pattern);
+                    return;
+                }
+                expanded.forEach((host) => {
+                    if (seen.has(host)) return;
+                    seen.add(host);
+                    hosts.push(host);
+                });
+            });
+
+            return { hosts, invalid };
+        }
+
+        function parseCredentialCandidatesText(text) {
+            const lines = String(text || '')
+                .split(/\n+/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+
+            const items = [];
+            const invalid = [];
+            const seen = new Set();
+
+            lines.forEach((line) => {
+                let username = '';
+                let password = '';
+
+                if (/\s/.test(line)) {
+                    const parts = line.split(/\s+/);
+                    username = (parts.shift() || '').trim();
+                    password = parts.join(' ');
+                } else if (line.includes(':')) {
+                    const index = line.indexOf(':');
+                    username = line.slice(0, index).trim();
+                    password = line.slice(index + 1);
+                } else if (line.includes(',')) {
+                    const index = line.indexOf(',');
+                    username = line.slice(0, index).trim();
+                    password = line.slice(index + 1);
+                } else {
+                    username = line.trim();
+                }
+
+                if (!username && !password) {
+                    return;
+                }
+                if (!username) {
+                    invalid.push(line);
+                    return;
+                }
+
+                const key = `${username}\u0000${password}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                items.push({ username, password });
+            });
+
+            return { items, invalid };
+        }
+
         function getManualTargetsFromForm() {
             return parseManualTargetsText(elements.updateManualTargets.value);
         }
 
-        function buildUpdateTargetEntries(devices = getSelectedDevices(), manualTargets = getManualTargetsFromForm()) {
+        function getSubnetTargetsFromForm() {
+            return parseSubnetTargetsText(elements.updateSubnetTargets.value);
+        }
+
+        function buildUpdateTargetEntries(
+            devices = getSelectedDevices(),
+            manualTargets = getManualTargetsFromForm(),
+            subnetTargets = getSubnetTargetsFromForm().hosts
+        ) {
             const entries = [];
             const seen = new Set();
 
@@ -1936,6 +2127,34 @@
 
             manualTargets.forEach((host) => {
                 if (!host || seen.has(host)) {
+                    return;
+                }
+                const expandedSubnet = expandSubnetExpression(host);
+                if (expandedSubnet.length) {
+                    expandedSubnet.forEach((expandedHost) => {
+                        if (!expandedHost || seen.has(expandedHost)) {
+                            return;
+                        }
+                        seen.add(expandedHost);
+                        const onlineDevice = getDevice(expandedHost);
+                        if (onlineDevice) {
+                            entries.push({
+                                ip: onlineDevice.ip,
+                                display_name: onlineDevice.display_name,
+                                device_type: onlineDevice.device_type,
+                                os_name: onlineDevice.os_name,
+                                source: 'subnet',
+                            });
+                            return;
+                        }
+                        entries.push({
+                            ip: expandedHost,
+                            display_name: expandedHost,
+                            device_type: '网段扫描目标',
+                            os_name: '待探测',
+                            source: 'subnet',
+                        });
+                    });
                     return;
                 }
                 seen.add(host);
@@ -1959,17 +2178,45 @@
                 });
             });
 
+            subnetTargets.forEach((host) => {
+                if (!host || seen.has(host)) {
+                    return;
+                }
+                seen.add(host);
+                const onlineDevice = getDevice(host);
+                if (onlineDevice) {
+                    entries.push({
+                        ip: onlineDevice.ip,
+                        display_name: onlineDevice.display_name,
+                        device_type: onlineDevice.device_type,
+                        os_name: onlineDevice.os_name,
+                        source: 'subnet',
+                    });
+                    return;
+                }
+                entries.push({
+                    ip: host,
+                    display_name: host,
+                    device_type: '网段扫描目标',
+                    os_name: '待探测',
+                    source: 'subnet',
+                });
+            });
+
             return entries;
         }
 
         function refreshUpdateSelectionPreview() {
-            const entries = buildUpdateTargetEntries();
+            const subnetInfo = getSubnetTargetsFromForm();
+            const entries = buildUpdateTargetEntries(getSelectedDevices(), getManualTargetsFromForm(), subnetInfo.hosts);
             elements.updateHeading.textContent = `批量安装 / 更新 · ${entries.length} 台目标`;
-            elements.updateSubheading.textContent = 'Dashboard 会先生成最新更新包，再按 SSH/Telnet 下发到已选在线设备和手动输入 IP。适合在线更新和未安装设备首装。';
+            elements.updateSubheading.textContent = subnetInfo.invalid.length
+                ? `存在未识别网段: ${subnetInfo.invalid.join(', ')}`
+                : 'Dashboard 会先生成最新更新包，再逐台通过 SSH / Telnet 探测版本；未安装则首装，旧版本则更新，已是新版本则跳过。';
             renderUpdateTargets(entries);
             elements.btnUpdateStart.disabled = state.updateJobStatus === 'queued' || state.updateJobStatus === 'running'
                 ? true
-                : entries.length === 0;
+                : entries.length === 0 || subnetInfo.invalid.length > 0;
         }
 
         function getSelectedDevices() {
@@ -2028,16 +2275,35 @@
 
         function renderUpdateTargets(targets) {
             if (!targets.length) {
-                elements.updateTargets.innerHTML = '<div class="tag">未选择设备，可手动输入 IP / 主机</div>';
+                elements.updateTargets.innerHTML = '<div class="tag">未选择设备，可手动输入 IP / 主机或网段</div>';
                 return;
             }
-            elements.updateTargets.innerHTML = targets.map((target) => `
+            const summary = {
+                online: targets.filter((target) => target.source === 'online').length,
+                manual: targets.filter((target) => target.source === 'manual').length,
+                subnet: targets.filter((target) => target.source === 'subnet').length,
+            };
+            const previewSource = targets.filter((target) => target.source !== 'subnet');
+            const preview = previewSource.slice(0, 12).map((target) => `
                 <div class="tag">
                     ${target.display_name}
                     <strong>${target.ip}</strong>
                     ${target.source === 'manual' ? '<span>手动</span>' : ''}
+                    ${target.source === 'subnet' ? '<span>网段</span>' : ''}
                 </div>
-            `).join('');
+            `);
+            const summaryTags = [
+                `<div class="tag">在线已选 <strong>${summary.online}</strong></div>`,
+                `<div class="tag">手动输入 <strong>${summary.manual}</strong></div>`,
+                `<div class="tag">网段展开 <strong>${summary.subnet}</strong></div>`,
+            ];
+            if (summary.subnet > 0) {
+                preview.unshift('<div class="tag">网段任务开始后，只显示探测到的机器</div>');
+            }
+            if (previewSource.length > 12) {
+                preview.push(`<div class="tag">其余 <strong>+${previewSource.length - 12}</strong></div>`);
+            }
+            elements.updateTargets.innerHTML = [...summaryTags, ...preview].join('');
         }
 
         function prefillUpdateForm(devices) {
@@ -2052,13 +2318,21 @@
             elements.updateUseSudo.checked = profile.use_sudo !== false;
             elements.updateSudoPassword.value = profile.sudo_password || '';
 
-            elements.updateSshUser.value = profile.ssh_user !== undefined ? profile.ssh_user : deriveDefaultSshUser(devices);
+            elements.updateSshUser.value = profile.ssh_user !== undefined
+                ? profile.ssh_user
+                : (deriveDefaultSshUser(devices) || DEFAULT_REMOTE_USERNAME);
             elements.updateSshPort.value = String(profile.ssh_port || 22);
-            elements.updateSshPassword.value = profile.ssh_password || '';
+            elements.updateSshPassword.value = profile.ssh_password !== undefined ? profile.ssh_password : DEFAULT_REMOTE_PASSWORD;
 
-            elements.updateTelnetUser.value = profile.telnet_user !== undefined ? profile.telnet_user : (telnetCredential?.username || '');
+            elements.updateTelnetUser.value = profile.telnet_user !== undefined
+                ? profile.telnet_user
+                : (telnetCredential?.username || DEFAULT_REMOTE_USERNAME);
             elements.updateTelnetPort.value = String(profile.telnet_port || telnetCredential?.port || 23);
-            elements.updateTelnetPassword.value = profile.telnet_password !== undefined ? profile.telnet_password : (telnetCredential?.password || '');
+            elements.updateTelnetPassword.value = profile.telnet_password !== undefined
+                ? profile.telnet_password
+                : (telnetCredential?.password || DEFAULT_REMOTE_PASSWORD);
+            elements.updateCredentialCandidates.value = profile.credential_candidates_text || '';
+            elements.updateSubnetTargets.value = profile.subnet_targets || '';
             elements.updateManualTargets.value = '';
         }
 
@@ -2079,6 +2353,8 @@
                 telnet_user: elements.updateTelnetUser.value.trim(),
                 telnet_port: Number(elements.updateTelnetPort.value || 23),
                 telnet_password: elements.updateTelnetPassword.value,
+                credential_candidates_text: elements.updateCredentialCandidates.value,
+                subnet_targets: elements.updateSubnetTargets.value.trim(),
             };
             if (elements.updateRemember.checked) {
                 saveUpdateProfile(profile);
@@ -2320,11 +2596,21 @@
             return metrics.join('');
         }
 
+        function isDeviceNew(device) {
+            const firstSeen = Number(device.first_seen || 0);
+            if (!firstSeen) {
+                return false;
+            }
+            return (Date.now() / 1000) - firstSeen < 300;
+        }
+
         function renderDevice(device) {
             const selected = state.selectedDevices.has(device.ip);
             const showHostname = !!(device.custom_title && device.hostname && device.hostname !== device.display_name);
+            const isNew = isDeviceNew(device);
             return `
-                <article class="device-card">
+                <article class="device-card ${isNew ? 'has-new' : ''}">
+                    ${isNew ? '<div class="new-badge">NEW</div>' : ''}
                     <div class="device-top">
                         <div class="device-title">
                             <h2>${escapeHtml(device.display_name)}</h2>
@@ -2544,6 +2830,7 @@
 
         function updateStatusClass(status) {
             if (status === 'running' || status === 'queued' || status === 'success') return status === 'success' ? 'success' : 'running';
+            if (status === 'skipped') return 'skipped';
             if (status === 'partial_success') return 'partial';
             if (status === 'failed') return 'failed';
             return '';
@@ -2551,42 +2838,87 @@
 
         function updateStatusLabel(status) {
             if (status === 'queued') return '准备中';
-            if (status === 'running') return '更新中';
+            if (status === 'running') return '处理中';
             if (status === 'success') return '全部成功';
+            if (status === 'skipped') return '已跳过';
             if (status === 'partial_success') return '部分成功';
             if (status === 'failed') return '失败';
             return '未开始';
         }
 
+        function updateActionLabel(action) {
+            if (action === 'install') return '安装';
+            if (action === 'update') return '更新';
+            if (action === 'skip') return '跳过';
+            return '';
+        }
+
+        function targetHasDiscoverySignal(target) {
+            return (target.attempts || []).some((attempt) => ['ping', 'ssh', 'telnet'].includes(attempt.transport) && attempt.ok);
+        }
+
+        function computeUpdateScanStats(job) {
+            const targets = job?.targets || [];
+            const scannedCount = targets.filter((target) => (target.attempts || []).some((attempt) => ['ping', 'ssh', 'telnet', 'scan'].includes(attempt.transport))).length;
+            const activeCount = targets.filter(targetHasDiscoverySignal).length;
+            return {
+                scannedCount,
+                activeCount,
+                targetCount: Number(job?.target_count || targets.length || 0),
+            };
+        }
+
         function renderUpdateJob(job = null) {
             if (!job) {
+                const subnetInfo = getSubnetTargetsFromForm();
                 state.updateJobStatus = null;
                 elements.updateStatus.textContent = '尚未启动更新任务。';
-                elements.updateResults.innerHTML = '<div class="empty"><h3>等待任务启动</h3><p>选择在线设备或手动输入 IP，并填写凭据后，即可批量安装 / 更新。</p></div>';
+                elements.updateResults.classList.remove('compact');
+                elements.updateResults.innerHTML = '<div class="empty"><h3>等待任务启动</h3><p>选择在线设备，或输入单机 IP / 网段，并填写凭据后，即可自动安装、更新或跳过最新版本。</p></div>';
                 elements.btnUpdateRefresh.disabled = !state.updateJobId;
-                elements.btnUpdateStart.disabled = buildUpdateTargetEntries().length === 0;
+                elements.btnUpdateStart.disabled = buildUpdateTargetEntries().length === 0 || subnetInfo.invalid.length > 0;
                 return;
             }
 
             state.updateJobId = job.job_id;
             state.updateJobStatus = job.status || null;
             const statusClass = updateStatusClass(job.status);
+            const scanStats = computeUpdateScanStats(job);
+            const scanPercent = scanStats.targetCount ? Math.max(0, Math.min(100, (scanStats.scannedCount / scanStats.targetCount) * 100)) : 0;
             elements.updateStatus.innerHTML = `
-                <span class="status-chip ${statusClass}">${updateStatusLabel(job.status)}</span>
-                <span>完成 ${job.completed_count || 0}/${job.target_count || 0}</span>
-                <span>成功 ${job.success_count || 0}</span>
-                <span>失败 ${job.failed_count || 0}</span>
-                ${job.bundle_version ? `<span>包版本 ${escapeHtml(job.bundle_version)}</span>` : ''}
-                ${job.error ? `<span>${escapeHtml(job.error)}</span>` : ''}
+                <div class="update-status-row">
+                    <span class="status-chip ${statusClass}">${updateStatusLabel(job.status)}</span>
+                    <span>完成 ${job.completed_count || 0}/${job.target_count || 0}</span>
+                    <span>成功 ${job.success_count || 0}</span>
+                    <span>跳过 ${job.skipped_count || 0}</span>
+                    <span>失败 ${job.failed_count || 0}</span>
+                    ${job.bundle_version ? `<span>包版本 ${escapeHtml(job.bundle_version)}</span>` : ''}
+                    ${job.error ? `<span>${escapeHtml(job.error)}</span>` : ''}
+                </div>
+                <div class="update-progress">
+                    <div class="update-progress-track"><span style="width:${scanPercent.toFixed(1)}%;"></span></div>
+                    <div class="update-progress-note">扫描进度 ${scanStats.scannedCount}/${scanStats.targetCount}，已发现 ${scanStats.activeCount} 台</div>
+                </div>
             `;
 
-            const results = (job.targets || []).map((target) => {
+            const hasSubnetTargets = (job.targets || []).some((target) => target.source === 'subnet');
+            const targetsToRender = hasSubnetTargets
+                ? (job.targets || []).filter(targetHasDiscoverySignal)
+                : (job.targets || []);
+            const results = targetsToRender.map((target) => {
                 const targetStatusClass = updateStatusClass(target.status);
                 const attempts = (target.attempts || []).map((attempt) => `
                     <div class="attempt ${attempt.ok ? 'ok' : 'fail'}">${escapeHtml((attempt.transport || '').toUpperCase() || 'N/A')} · ${escapeHtml(attempt.message || '')}</div>
                 `).join('');
+                const actionLabel = updateActionLabel(target.action);
+                const noteBits = [
+                    target.message || '等待开始',
+                    target.transport ? `通过 ${String(target.transport).toUpperCase()}` : '',
+                    actionLabel ? `${actionLabel}流程` : '',
+                    target.detected_version ? `检测版本 ${target.detected_version}` : '',
+                ].filter(Boolean);
                 return `
-                    <article class="update-result">
+                    <article class="update-result ${hasSubnetTargets ? 'compact' : ''}">
                         <div class="update-result-head">
                             <div class="update-result-title">
                                 <strong>${escapeHtml(target.display_name)}</strong>
@@ -2595,16 +2927,20 @@
                             <div class="status-chip ${targetStatusClass}">${escapeHtml(updateStatusLabel(target.status))}</div>
                         </div>
                         <div class="update-result-note">
-                            ${escapeHtml(target.message || '等待开始')}
-                            ${target.transport ? ` · 通过 ${escapeHtml(String(target.transport).toUpperCase())}` : ''}
+                            ${escapeHtml(noteBits.join(' · '))}
                         </div>
                         ${attempts ? `<div class="attempt-strip">${attempts}</div>` : ''}
-                        ${target.log ? `<pre class="update-log">${escapeHtml(target.log)}</pre>` : ''}
+                        ${hasSubnetTargets ? '' : (target.log ? `<pre class="update-log">${escapeHtml(target.log)}</pre>` : '')}
                     </article>
                 `;
             });
 
-            elements.updateResults.innerHTML = results.join('') || '<div class="empty"><h3>暂无结果</h3><p>任务启动后将在这里显示每台设备的更新过程。</p></div>';
+            elements.updateResults.classList.toggle('compact', hasSubnetTargets);
+            elements.updateResults.innerHTML = results.join('') || (
+                hasSubnetTargets
+                    ? '<div class="empty"><h3>扫描中</h3><p>这里会逐步显示探测到的机器；未命中的地址会折叠到上面的统计里。</p></div>'
+                    : '<div class="empty"><h3>暂无结果</h3><p>任务启动后将在这里显示每台设备的更新过程。</p></div>'
+            );
             elements.btnUpdateStart.disabled = job.status === 'queued' || job.status === 'running';
             elements.btnUpdateRefresh.disabled = false;
         }
@@ -2681,8 +3017,22 @@
         async function startBatchUpdate() {
             const selectedDevices = getSelectedDevices();
             const manualTargets = getManualTargetsFromForm();
-            if (!selectedDevices.length && !manualTargets.length) {
-                showToast('请先选择设备，或手动输入要安装的 IP / 主机');
+            const subnetInfo = getSubnetTargetsFromForm();
+            const credentialInfo = parseCredentialCandidatesText(elements.updateCredentialCandidates.value);
+            const subnetPatterns = String(elements.updateSubnetTargets.value || '')
+                .split(/[\s,，;；]+/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+            if (subnetInfo.invalid.length) {
+                showToast(`无效网段: ${subnetInfo.invalid.join(', ')}`);
+                return;
+            }
+            if (credentialInfo.invalid.length) {
+                showToast(`无效账号行: ${credentialInfo.invalid.join(', ')}`);
+                return;
+            }
+            if (!selectedDevices.length && !manualTargets.length && !subnetInfo.hosts.length) {
+                showToast('请先选择设备，或输入要安装的 IP / 主机 / 网段');
                 return;
             }
 
@@ -2696,6 +3046,7 @@
                     body: JSON.stringify({
                         targets: selectedDevices.map((device) => device.ip),
                         manual_targets: manualTargets,
+                        subnet_targets: subnetPatterns,
                         strategy: profile.strategy,
                         parallelism: profile.parallelism,
                         dashboard_origin: window.location.origin,
@@ -2709,6 +3060,7 @@
                             password: profile.telnet_password,
                             port: profile.telnet_port,
                         },
+                        credential_candidates: credentialInfo.items,
                         sudo: {
                             enabled: profile.use_sudo,
                             password: profile.sudo_password,
@@ -2724,7 +3076,7 @@
                 state.updateJobId = payload.job_id;
                 renderUpdateJob(payload);
                 pollUpdateJob(payload.job_id);
-                showToast(manualTargets.length ? '远程安装 / 更新任务已启动' : '群发更新任务已启动');
+                showToast(manualTargets.length || subnetInfo.hosts.length ? '远程安装 / 更新任务已启动' : '群发更新任务已启动');
             } catch (error) {
                 elements.btnUpdateStart.disabled = false;
                 showToast(error.message || '创建更新任务失败');
@@ -3179,6 +3531,7 @@
         elements.btnUpdateClose.addEventListener('click', closeUpdateModal);
         elements.btnUpdateStart.addEventListener('click', startBatchUpdate);
         elements.btnUpdateRefresh.addEventListener('click', refreshUpdateJob);
+        elements.updateSubnetTargets.addEventListener('input', refreshUpdateSelectionPreview);
         elements.updateManualTargets.addEventListener('input', refreshUpdateSelectionPreview);
         elements.btnCtrlC.addEventListener('click', () => queueTerminalInput('\u0003'));
         elements.btnCtrlD.addEventListener('click', () => queueTerminalInput('\u0004'));
