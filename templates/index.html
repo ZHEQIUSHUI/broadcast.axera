@@ -1673,12 +1673,51 @@
             showToast.timer = setTimeout(() => elements.toast.classList.remove('show'), 1800);
         }
 
-        function copyText(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                showToast(`已复制: ${text}`);
-            }).catch(() => {
-                showToast('复制失败');
-            });
+        function fallbackCopyText(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', 'readonly');
+            textarea.style.position = 'fixed';
+            textarea.style.top = '-1000px';
+            textarea.style.left = '-1000px';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            textarea.setSelectionRange(0, textarea.value.length);
+            let copied = false;
+            try {
+                copied = document.execCommand('copy');
+            } catch (_) {
+                copied = false;
+            }
+            document.body.removeChild(textarea);
+            return copied;
+        }
+
+        async function copyText(text) {
+            const value = String(text || '');
+            if (!value) {
+                showToast('复制内容为空');
+                return false;
+            }
+
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(value);
+                    showToast(`已复制: ${value}`);
+                    return true;
+                } catch (_) {
+                }
+            }
+
+            if (fallbackCopyText(value)) {
+                showToast(`已复制: ${value}`);
+                return true;
+            }
+
+            showToast('复制失败');
+            return false;
         }
 
         function escapeHtml(text) {
