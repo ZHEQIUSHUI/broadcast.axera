@@ -1474,10 +1474,10 @@
                                 非 root 时尝试 sudo 安装
                             </label>
                         </div>
-                        <label>
-                            sudo 密码
-                            <input id="update-sudo-password" type="password" placeholder="留空则默认使用登录密码">
-                        </label>
+	                            <label>
+	                                sudo 密码
+	                                <input id="update-sudo-password" type="text" placeholder="留空则默认使用登录密码">
+	                            </label>
                     </div>
                     <div class="update-card">
                         <h4>目标设备</h4>
@@ -1512,10 +1512,10 @@
                                 端口
                                 <input id="update-ssh-port" type="number" value="22">
                             </label>
-                            <label>
-                                密码
-                                <input id="update-ssh-password" type="password" placeholder="留空则尝试本机 SSH key/agent">
-                            </label>
+	                            <label>
+	                                密码
+	                                <input id="update-ssh-password" type="text" placeholder="留空则尝试本机 SSH key/agent">
+	                            </label>
                         </div>
                         <div class="update-note">如果 Telnet 用户名 / 密码留空，会自动继承这里填写的用户名 / 密码。</div>
                     </div>
@@ -1530,10 +1530,10 @@
                                 端口
                                 <input id="update-telnet-port" type="number" value="23">
                             </label>
-                            <label>
-                                密码
-                                <input id="update-telnet-password" type="password" placeholder="按需填写">
-                            </label>
+	                            <label>
+	                                密码
+	                                <input id="update-telnet-password" type="text" placeholder="按需填写">
+	                            </label>
                         </div>
                         <div class="update-note">如果这里留空，会自动回退到 SSH 区填写的用户名 / 密码。</div>
                     </div>
@@ -2675,6 +2675,8 @@
                         <div class="chip">IP <strong>${escapeHtml(device.ip)}</strong></div>
                         <div class="chip">用户 <strong>${escapeHtml(device.default_user)}</strong></div>
                         <div class="chip">架构 <strong>${escapeHtml(device.arch || device.machine || 'N/A')}</strong></div>
+                        ${device.is_ax && device.version ? `<div class="chip">AX 版本 <strong>${escapeHtml(device.version)}</strong></div>` : ''}
+                        ${device.board_id ? `<div class="chip">Board ID <strong>${escapeHtml(device.board_id)}</strong></div>` : ''}
                         <div class="chip">运行 <strong>${escapeHtml(formatUptime(device.uptime_seconds))}</strong></div>
                     </div>
 

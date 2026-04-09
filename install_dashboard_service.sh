@@ -71,6 +71,9 @@ SERVICE_NAME="$(resolve_service_name)"
 
 if [[ -z "$PYTHON_BIN" ]]; then
     echo "No suitable python3 found with Flask and Paramiko installed."
+    echo
+    echo "Try:"
+    echo "  python3 -m pip install -r '$SCRIPT_DIR/requirements.txt'"
     exit 1
 fi
 

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Python deps
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+
+      - name: Python syntax check
+        run: python3 -m py_compile dashboard.py
+
+      - name: Shell script syntax check
+        run: |
+          bash -n build.sh install_dashboard_service.sh
+          sh -n install.sh
+
+      - name: Build agent (native)
+        run: |
+          g++ -std=c++11 -O2 -Wall -Wextra -o /tmp/device_broadcast_ci device_broadcast.cpp
+
+      - name: Build dist bundles (best-effort)
+        run: ./build.sh

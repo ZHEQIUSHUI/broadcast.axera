@@ -163,6 +163,77 @@ def is_valid_ipv4_host(value):
     return len(parts) == 4 and all(is_valid_ipv4_octet(part) for part in parts)
 
 
+def resolve_hostname_to_ipv4_addresses(hostname):
+    hostname = clean_text(hostname)
+    if not hostname:
+        return set()
+    if hostname.lower() == "localhost":
+        return {"127.0.0.1"}
+    if is_valid_ipv4_host(hostname):
+        return {hostname}
+
+    addresses = set()
+    try:
+        for item in socket.getaddrinfo(hostname, None, family=socket.AF_INET):
+            addr = item[4][0] if item and len(item) >= 5 else ""
+            if is_valid_ipv4_host(addr):
+                addresses.add(addr)
+    except Exception:
+        return set()
+
+    return addresses
+
+
+def collect_local_ipv4_addresses():
+    addresses = {"127.0.0.1"}
+
+    try:
+        result = subprocess.run(
+            ["ip", "-o", "-4", "addr", "show"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if result.returncode == 0:
+            for line in (result.stdout or "").splitlines():
+                match = re.search(r"\binet\s+([0-9]+(?:\.[0-9]+){3})/", line)
+                if match and is_valid_ipv4_host(match.group(1)):
+                    addresses.add(match.group(1))
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(1.0)
+        sock.connect(("8.8.8.8", 80))
+        addr = sock.getsockname()[0]
+        if is_valid_ipv4_host(addr):
+            addresses.add(addr)
+    except Exception:
+        pass
+    finally:
+        try:
+            if sock:
+                sock.close()
+        except Exception:
+            pass
+
+    return addresses
+
+
+def should_skip_self_target(host, self_ipv4_addresses):
+    host = clean_text(host).strip()
+    if not host:
+        return False
+    if host.lower() == "localhost":
+        return True
+    return is_valid_ipv4_host(host) and host in self_ipv4_addresses
+
+
 def expand_subnet_expression(value):
     text = clean_text(value).lower()
     if not text:
@@ -353,6 +424,17 @@ def make_device_metadata_key(prefix, value):
     return f"{prefix}:{text}" if text else ""
 
 
+def is_placeholder_uid(value):
+    text = clean_text(value).strip().lower()
+    if not text:
+        return True
+    if re.fullmatch(r"0x0+", text):
+        return True
+    if re.fullmatch(r"0+", text):
+        return True
+    return False
+
+
 def device_metadata_keys_for_payload(payload, ip_address=""):
     keys = []
     seen = set()
@@ -363,8 +445,24 @@ def device_metadata_keys_for_payload(payload, ip_address=""):
             seen.add(key)
             keys.append(key)
 
-    add("uid", payload.get("uid"))
+    add("ip", payload.get("ip") or ip_address)
+    uid = payload.get("uid")
+    if not is_placeholder_uid(uid):
+        add("uid", uid)
     add("board_id", payload.get("board_id"))
+    return keys
+
+
+def device_metadata_write_keys_for_payload(payload, ip_address=""):
+    keys = []
+    seen = set()
+
+    def add(prefix, value):
+        key = make_device_metadata_key(prefix, value)
+        if key and key not in seen:
+            seen.add(key)
+            keys.append(key)
+
     add("ip", payload.get("ip") or ip_address)
     return keys
 
@@ -2258,7 +2356,7 @@ def api_device_metadata():
         device = online_devices.get(ip_address)
         if not device:
             return jsonify({"error": "device_not_found"}), 404
-        metadata_keys = device_metadata_keys_for_payload(device, ip_address)
+        metadata_keys = device_metadata_write_keys_for_payload(device, ip_address)
 
     primary_key = metadata_keys[0] if metadata_keys else make_device_metadata_key("ip", ip_address)
     updated_at = now_iso()
@@ -2401,6 +2499,14 @@ def api_update_create_job():
     if not target_ips and not manual_hosts and not subnet_hosts:
         return jsonify({"error": "missing_targets"}), 400
 
+    dashboard_origin = clean_text(body.get("dashboard_origin"), request.host_url.rstrip("/"))
+    parsed_origin = urlsplit(dashboard_origin)
+    if not parsed_origin.scheme or not parsed_origin.netloc:
+        dashboard_origin = request.host_url.rstrip("/")
+        parsed_origin = urlsplit(dashboard_origin)
+    self_ipv4_addresses = collect_local_ipv4_addresses()
+    self_ipv4_addresses.update(resolve_hostname_to_ipv4_addresses(parsed_origin.hostname))
+
     ssh_body = body.get("ssh") if isinstance(body.get("ssh"), dict) else {}
     telnet_body = body.get("telnet") if isinstance(body.get("telnet"), dict) else {}
     credential_candidates = normalize_credential_candidates(body.get("credential_candidates"))
@@ -2430,6 +2536,8 @@ def api_update_create_job():
     for host in manual_hosts:
         if host in seen:
             continue
+        if should_skip_self_target(host, self_ipv4_addresses):
+            continue
         seen.add(host)
         device = online_devices.get(host)
         if device:
@@ -2439,6 +2547,8 @@ def api_update_create_job():
 
     for host in subnet_hosts:
         if host in seen:
+            continue
+        if should_skip_self_target(host, self_ipv4_addresses):
             continue
         seen.add(host)
         device = online_devices.get(host)
@@ -2453,11 +2563,6 @@ def api_update_create_job():
         return jsonify({"error": "missing_targets"}), 400
 
     parallelism = clamp_int(body.get("parallelism"), 1, UPDATE_MAX_PARALLEL, min(len(targets), UPDATE_MAX_PARALLEL))
-
-    dashboard_origin = clean_text(body.get("dashboard_origin"), request.host_url.rstrip("/"))
-    parsed_origin = urlsplit(dashboard_origin)
-    if not parsed_origin.scheme or not parsed_origin.netloc:
-        dashboard_origin = request.host_url.rstrip("/")
 
     job_id = uuid.uuid4().hex
     job = build_update_job_public(job_id, targets, strategy, parallelism)

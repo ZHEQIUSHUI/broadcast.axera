@@ -55,7 +55,7 @@
 ## 依赖
 
 ```bash
-pip install flask paramiko
+python3 -m pip install -r requirements.txt
 ```
 
 ## 编译
