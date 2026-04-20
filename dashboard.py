@@ -615,6 +615,7 @@ def normalize_device_payload(payload, ip_address):
         "uid": clean_text(payload.get("uid")),
         "version": clean_text(payload.get("version")),
         "board_id": clean_text(payload.get("board_id")),
+        "chip_type": clean_text(payload.get("chip_type")),
         "cpu_usage_percent": safe_float(payload.get("cpu_usage_percent")),
         "cpu_cores": safe_int(payload.get("cpu_cores")),
         "uptime_seconds": safe_int(payload.get("uptime_seconds")),
@@ -702,6 +703,108 @@ def build_summary(devices):
     if cpu_values:
         summary["avg_cpu_usage_percent"] = round(sum(cpu_values) / len(cpu_values), 2)
     return summary
+
+
+AX_MODEL_RE = re.compile(r"\bax[0-9]{3,4}[a-z0-9]*\b", re.IGNORECASE)
+X86_TAG_RE = re.compile(r"\bx86(?:_64)?\b|\bamd64\b|\bi[3-6]86\b", re.IGNORECASE)
+
+
+def device_filter_search_text(device):
+    parts = [
+        device.get("device_kind"),
+        device.get("device_type"),
+        device.get("display_name"),
+        device.get("hostname"),
+        device.get("board_model"),
+        device.get("board_vendor"),
+        device.get("platform_vendor"),
+        device.get("board_id"),
+        device.get("chip_type"),
+        device.get("arch"),
+        device.get("machine"),
+    ]
+    cleaned = [clean_text(item) for item in parts if clean_text(item)]
+    return " ".join(cleaned).lower()
+
+
+def extract_ax_model_key(device):
+    text = device_filter_search_text(device)
+    match = AX_MODEL_RE.search(text)
+    return match.group(0).lower() if match else ""
+
+
+def compute_device_filter_tags(device):
+    text = device_filter_search_text(device)
+    tags = {"all"}
+    ax_model = extract_ax_model_key(device)
+    device_kind = clean_text(device.get("device_kind")).lower()
+
+    is_raspberry_pi = bool(device.get("is_raspberry_pi")) or ("raspberry pi" in text) or ("树莓派" in text)
+    is_x86 = device_kind == "x86" or bool(X86_TAG_RE.search(text))
+    is_axera = bool(device.get("is_ax")) or device_kind == "ax" or bool(ax_model) or ("axera" in text)
+
+    if is_axera:
+        tags.add("axera")
+        if ax_model:
+            tags.add(f"ax:{ax_model}")
+        return tags
+
+    if is_raspberry_pi:
+        tags.add("raspberry_pi")
+        return tags
+
+    if is_x86:
+        tags.add("x86")
+        return tags
+
+    tags.add("other")
+    return tags
+
+
+def build_filter_tag_summary(devices):
+    broad_counts = {"axera": 0, "x86": 0, "raspberry_pi": 0, "other": 0}
+    specific_ax_counts = {}
+
+    for device in devices:
+        tags = compute_device_filter_tags(device)
+        for tag in tags:
+            if tag == "all":
+                continue
+            if tag.startswith("ax:"):
+                specific_ax_counts[tag] = specific_ax_counts.get(tag, 0) + 1
+                continue
+            broad_counts[tag] = broad_counts.get(tag, 0) + 1
+
+    summary = []
+    if broad_counts.get("axera"):
+        summary.append({"tag": "axera", "count": broad_counts["axera"]})
+    for tag in sorted(specific_ax_counts.keys()):
+        summary.append({"tag": tag, "count": specific_ax_counts[tag]})
+    for tag in ("x86", "raspberry_pi", "other"):
+        if broad_counts.get(tag):
+            summary.append({"tag": tag, "count": broad_counts[tag]})
+    return summary
+
+
+def normalize_query_tags(raw_value):
+    if raw_value in (None, "", "null"):
+        return []
+    if isinstance(raw_value, str):
+        raw_tags = re.split(r"[\s,，;；]+", raw_value)
+    elif isinstance(raw_value, list):
+        raw_tags = raw_value
+    else:
+        raw_tags = [raw_value]
+
+    tags = []
+    seen = set()
+    for item in raw_tags:
+        tag = clean_text(item).lower()
+        if not tag or tag == "all" or tag in seen:
+            continue
+        seen.add(tag)
+        tags.append(tag)
+    return tags
 
 
 def get_online_devices_by_ip():
@@ -2391,6 +2494,44 @@ def api_devices():
             "generated_at": int(time.time() * 1000),
             "summary": build_summary(devices),
             "devices": devices,
+        }
+    )
+
+
+@app.route("/api/devices/query", methods=["POST"])
+def api_devices_query():
+    body = request.get_json(silent=True) or {}
+    requested_tags = normalize_query_tags(body.get("tags") if "tags" in body else body.get("tag"))
+    include_history = bool(body.get("include_history"))
+
+    with device_lock:
+        devices_sorted = [device for _, device in sorted(online_devices.items(), key=lambda item: item[0])]
+        tag_summary = build_filter_tag_summary(devices_sorted)
+
+        filtered_devices = []
+        for device in devices_sorted:
+            tags = compute_device_filter_tags(device)
+            if requested_tags and not any(tag in tags for tag in requested_tags):
+                continue
+
+            if include_history:
+                payload = serialize_device(device)
+            else:
+                payload = dict(device)
+                payload.pop("history", None)
+
+            payload["filter_tags"] = sorted(tag for tag in tags if tag != "all")
+            filtered_devices.append(payload)
+
+    return jsonify(
+        {
+            "generated_at": int(time.time() * 1000),
+            "filter": {
+                "tags": requested_tags,
+            },
+            "tags": tag_summary,
+            "device_count": len(filtered_devices),
+            "devices": filtered_devices,
         }
     )
 

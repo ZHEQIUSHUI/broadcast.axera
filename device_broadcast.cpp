@@ -95,6 +95,7 @@ struct DeviceInfo {
     std::string uid = "";
     std::string version = "";
     std::string board_id = "";
+    std::string chip_type = "";
     bool is_ax = false;
     bool is_raspberry_pi = false;
     int cpu_cores = 0;
@@ -801,6 +802,7 @@ DeviceInfo collect_static_device_info() {
         info.uid = normalize_ax_uid(info.uid);
         read_first_line("/proc/ax_proc/version", &info.version);
         read_first_line("/proc/ax_proc/board_id", &info.board_id);
+        read_first_line("/proc/ax_proc/chip_type", &info.chip_type);
         if (info.board_model.empty()) {
             info.board_model = info.board_id;
         }
@@ -877,6 +879,7 @@ std::string device_info_to_json(const DeviceInfo &info) {
     json << "\"uid\":\"" << json_escape(info.uid) << "\",";
     json << "\"version\":\"" << json_escape(info.version) << "\",";
     json << "\"board_id\":\"" << json_escape(info.board_id) << "\",";
+    json << "\"chip_type\":\"" << json_escape(info.chip_type) << "\",";
     json << "\"is_ax\":" << format_bool(info.is_ax) << ",";
     json << "\"is_raspberry_pi\":" << format_bool(info.is_raspberry_pi) << ",";
     json << "\"cpu_cores\":" << info.cpu_cores << ",";

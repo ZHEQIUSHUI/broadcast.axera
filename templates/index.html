@@ -1836,6 +1836,7 @@
                 device.board_vendor,
                 device.platform_vendor,
                 device.board_id,
+                device.chip_type,
                 device.arch,
                 device.machine,
             ]
@@ -2676,6 +2677,7 @@
                         <div class="chip">用户 <strong>${escapeHtml(device.default_user)}</strong></div>
                         <div class="chip">架构 <strong>${escapeHtml(device.arch || device.machine || 'N/A')}</strong></div>
                         ${device.is_ax && device.version ? `<div class="chip">AX 版本 <strong>${escapeHtml(device.version)}</strong></div>` : ''}
+                        ${device.is_ax && device.chip_type ? `<div class="chip">AX Chip <strong>${escapeHtml(device.chip_type)}</strong></div>` : ''}
                         ${device.board_id ? `<div class="chip">Board ID <strong>${escapeHtml(device.board_id)}</strong></div>` : ''}
                         <div class="chip">运行 <strong>${escapeHtml(formatUptime(device.uptime_seconds))}</strong></div>
                     </div>
@@ -2789,6 +2791,7 @@
             }
             if (device.uid) details.push(['AX UID', device.uid]);
             if (device.version) details.push(['AX 版本', device.version]);
+            if (device.chip_type) details.push(['Chip Type', device.chip_type]);
             if (device.board_id) details.push(['Board ID', device.board_id]);
             return details;
         }

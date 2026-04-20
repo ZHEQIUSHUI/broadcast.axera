@@ -5,7 +5,7 @@
 - 自动识别 `AX / Raspberry Pi / x86 / 其他 ARM Linux`
 - 自动上报 `OS 发行版 / 内核 / libc / 架构 / 用户 / 机型`
 - 支持 `CPU / 内存 / 显存` 指标
-- AX 设备额外支持 `UID / version / board_id / CMM`
+- AX 设备额外支持 `UID / version / board_id / chip_type / CMM`（其中 `chip_type` 来自 `/proc/ax_proc/chip_type`）
 - 仪表盘支持动态设备卡片、型号筛选、设备详情页、网页 SSH 终端
 - SSH 终端支持浏览器本地保存密码，下次可直接进入
 - 支持网页批量更新：可选 `SSH / Telnet / 自动 SSH->Telnet 回退`
@@ -20,7 +20,7 @@
 
 - 页面顶部会汇总在线设备、平均 CPU、高 CPU 设备数、GPU / AX 设备数。
 - 型号筛选支持按设备类型快速过滤，例如 `AX620Q / AX630C / AX650 / x86`。
-- 设备信息卡片会展示在线状态、IP、默认用户、架构、运行时长，以及 `CPU / 内存 / GPU / AX CMM` 指标。
+- 设备信息卡片会展示在线状态、IP、默认用户、架构、运行时长，以及 `CPU / 内存 / GPU / AX CMM` 指标；AX 设备还会展示 `version / chip_type / board_id` 等信息。
 - 每张卡片都可以直接进入 `详情`、`终端`、`复制 IP`，并参与批量更新或远程安装。
 
 ### 批量安装 / 更新
@@ -39,6 +39,7 @@
 
 - 详情页会集中展示设备的主机名、IP、系统版本、系统 ID、架构、内核、libc、厂商、机型、在线时间等信息。
 - 页面顶部保留关键运行指标摘要，便于在查看元信息时继续判断设备状态。
+- AX 设备会额外展示 `UID / version / chip_type / board_id / CMM` 等信息。
 - 支持直接编辑设备标题和备注，适合记录机位、负责人、用途、网络说明等内容。
 - 标题和备注保存在当前 Dashboard 主机本地，服务重启后仍会保留。
 
@@ -114,6 +115,44 @@ python3 dashboard.py
 
 ```text
 http://<dashboard-ip>:25000
+```
+
+### 对外接口（设备列表 / Tag 筛选）
+
+Dashboard 启动后，其他人可通过 Dashboard 端口（默认 `25000`）获取设备列表，并通过 tag 进行筛选（tag 规则与页面“型号筛选”一致）。
+
+- `GET /api/devices`：返回全部在线设备列表（含 summary + devices）。
+- `POST /api/devices/query`：按 tag 筛选并返回设备列表，同时返回当前可用 tag 及数量。
+
+`/api/devices/query` 请求体（JSON）：
+
+- `tag`：单个 tag（字符串）。
+- `tags`：多个 tag（字符串数组，或用逗号/空格分隔的字符串）。
+- `include_history`：是否包含历史曲线数据（默认 `false`）。
+
+常用 tag：
+
+- `axera`：所有 AX 设备
+- `ax:<model>`：某个具体 AX 型号（例如 `ax:ax620q`）
+- `x86`：x86 设备
+- `raspberry_pi`：树莓派
+- `other`：其他设备
+
+示例：
+
+```bash
+# 全量设备
+curl -s http://<dashboard-ip>:25000/api/devices
+
+# 只取 AX 设备
+curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
+  -H 'Content-Type: application/json' \
+  -d '{"tag":"axera"}'
+
+# 同时匹配多个 tag（任意命中即返回）
+curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
+  -H 'Content-Type: application/json' \
+  -d '{"tags":["ax:ax620q","x86"]}'
 ```
 
 如果要启用网页版 SSH，还需要额外准备一个可访问的 `webssh2` 服务；Dashboard 本身不会自动安装它，只负责跳转到 `WEBSSH2_URL_TEMPLATE` 指定的地址。
