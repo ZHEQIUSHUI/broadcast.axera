@@ -166,6 +166,11 @@ curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
 - 添加 `服务器（IP:端口）` + `位置标签` + `备注`
 - 保存后会自动刷新设备列表；设备卡片会增加 `位置` 预览，并可按位置筛选
 
+说明：
+
+- 远程设备在当前页面为**只读展示**（显示为 `Remote`），终端 / 群发更新建议在对应办公室的 Dashboard 上操作。
+- 如果你升级代码后访问 `GET /api/remotes` 仍返回 `404`，说明服务还在跑旧代码：请重启 Dashboard（例如 `sudo systemctl restart dashboard.service`，或重新运行 `python3 dashboard.py`）。
+
 可选环境变量（标记当前 Dashboard 所在位置）：
 
 - `DASHBOARD_SITE_LABEL`：本机位置标签（默认 `本地`）
@@ -183,10 +188,20 @@ curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
 # 聚合展示（本地 + 远程）
 curl -s http://<dashboard-ip>:25000/api/devices?include_remotes=1
 
+# 添加一个远程 Dashboard 源（示例：深圳办公室）
+curl -s -X POST http://<dashboard-ip>:25000/api/remotes \
+  -H 'Content-Type: application/json' \
+  -d '{"origin":"10.0.0.12:25000","label":"深圳","note":"A 区机房","enabled":true}'
+
 # 按 tag 筛选（包含远程）
 curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
   -H 'Content-Type: application/json' \
   -d '{"include_remotes":true,"tag":"axera"}'
+
+# 按位置筛选（位置 tag 会以 site:* 形式出现在 tag_summary 中）
+curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
+  -H 'Content-Type: application/json' \
+  -d '{"include_remotes":true,"tag":"site:深圳"}'
 ```
 
 如果要启用网页版 SSH，还需要额外准备一个可访问的 `webssh2` 服务；Dashboard 本身不会自动安装它，只负责跳转到 `WEBSSH2_URL_TEMPLATE` 指定的地址。
