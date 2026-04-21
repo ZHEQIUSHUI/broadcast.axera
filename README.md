@@ -7,6 +7,7 @@
 - 支持 `CPU / 内存 / 显存` 指标
 - AX 设备额外支持 `UID / version / board_id / chip_type / CMM`（其中 `chip_type` 来自 `/proc/ax_proc/chip_type`）
 - 仪表盘支持动态设备卡片、型号筛选、设备详情页、网页 SSH 终端
+- 支持多办公室聚合：可添加其他 Dashboard 作为远程源，设备卡片预览位置，并支持位置筛选
 - SSH 终端支持浏览器本地保存密码，下次可直接进入
 - 支持网页批量更新：可选 `SSH / Telnet / 自动 SSH->Telnet 回退`
 - 支持远程安装网段扫描：可输入 `10.126.35.x / 10.126.35.0/24` 自动遍历 `1-255`
@@ -153,6 +154,39 @@ curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
 curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
   -H 'Content-Type: application/json' \
   -d '{"tags":["ax:ax620q","x86"]}'
+```
+
+### 多办公室聚合（远程 Dashboard）
+
+如果每个办公室都启动一套 Dashboard，可以在任意一台 Dashboard 上把其他办公室的设备列表聚合到当前页面显示（远程设备为只读展示，终端 / 群发更新建议在对应办公室的 Dashboard 上操作）。
+
+页面操作：
+
+- 点击“位置筛选”右侧的“远程面板”
+- 添加 `服务器（IP:端口）` + `位置标签` + `备注`
+- 保存后会自动刷新设备列表；设备卡片会增加 `位置` 预览，并可按位置筛选
+
+可选环境变量（标记当前 Dashboard 所在位置）：
+
+- `DASHBOARD_SITE_LABEL`：本机位置标签（默认 `本地`）
+- `DASHBOARD_SITE_NOTE`：本机备注（可选）
+
+接口补充：
+
+- `GET /api/devices?include_remotes=1`：返回本机 + 已配置远程源的设备列表
+- `POST /api/devices/query`：请求体支持 `include_remotes=true`（并会额外生成 `site:*` tag 供筛选）
+- 远程源管理：`GET/POST /api/remotes`、`DELETE /api/remotes/<id>`
+
+示例：
+
+```bash
+# 聚合展示（本地 + 远程）
+curl -s http://<dashboard-ip>:25000/api/devices?include_remotes=1
+
+# 按 tag 筛选（包含远程）
+curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
+  -H 'Content-Type: application/json' \
+  -d '{"include_remotes":true,"tag":"axera"}'
 ```
 
 如果要启用网页版 SSH，还需要额外准备一个可访问的 `webssh2` 服务；Dashboard 本身不会自动安装它，只负责跳转到 `WEBSSH2_URL_TEMPLATE` 指定的地址。

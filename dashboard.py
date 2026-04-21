@@ -9,6 +9,8 @@ import threading
 import time
 import tarfile
 import uuid
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from urllib.parse import urlsplit
@@ -40,6 +42,12 @@ APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 RUNTIME_ROOT = os.path.join(APP_ROOT, ".runtime")
 UPDATE_JOBS_ROOT = os.path.join(RUNTIME_ROOT, "update_jobs")
 DEVICE_METADATA_PATH = os.path.join(RUNTIME_ROOT, "device_metadata.json")
+REMOTE_DASHBOARDS_PATH = os.path.join(RUNTIME_ROOT, "remote_dashboards.json")
+
+DASHBOARD_SITE_LABEL = (os.getenv("DASHBOARD_SITE_LABEL", "本地") or "本地").strip() or "本地"
+DASHBOARD_SITE_NOTE = (os.getenv("DASHBOARD_SITE_NOTE", "") or "").strip()
+REMOTE_FETCH_TIMEOUT_SECONDS = float(os.getenv("REMOTE_FETCH_TIMEOUT_SECONDS", "2.5"))
+REMOTE_FETCH_MAX_PARALLEL = int(os.getenv("REMOTE_FETCH_MAX_PARALLEL", "8"))
 
 ANSI_OSC_RE = re.compile(r"\x1b\][^\x07]*(?:\x07|\x1b\\)")
 ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -63,6 +71,8 @@ online_devices = {}
 device_lock = threading.Lock()
 device_metadata = {}
 metadata_lock = threading.Lock()
+remote_dashboards = {}
+remote_lock = threading.Lock()
 
 terminal_sessions = {}
 terminal_lock = threading.Lock()
@@ -512,6 +522,111 @@ def persist_device_metadata_records_locked():
     )
 
 
+def normalize_remote_label(value, limit=40):
+    text = clean_text(value)
+    if len(text) > limit:
+        text = text[:limit]
+    return text
+
+
+def normalize_remote_note(value, limit=200):
+    text = clean_text(value)
+    if len(text) > limit:
+        text = text[:limit]
+    return text
+
+
+def normalize_remote_origin(value):
+    text = clean_text(value)
+    if not text:
+        raise ValueError("remote origin is empty")
+
+    if "://" not in text:
+        text = f"http://{text}"
+
+    parsed = urlsplit(text)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("remote origin must be http/https")
+    if parsed.username or parsed.password:
+        raise ValueError("remote origin must not include credentials")
+    if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+        raise ValueError("remote origin must not include path/query/fragment")
+
+    host = parsed.hostname
+    if not host:
+        raise ValueError("remote origin host is empty")
+
+    port = parsed.port
+    if not port:
+        port = 443 if parsed.scheme == "https" else 80
+    if port <= 0 or port > 65535:
+        raise ValueError("remote origin port is invalid")
+
+    host_display = f"[{host}]" if ":" in host else host
+    return f"{parsed.scheme}://{host_display}:{port}"
+
+
+def load_remote_dashboards_records():
+    if not os.path.exists(REMOTE_DASHBOARDS_PATH):
+        return {}
+
+    try:
+        with open(REMOTE_DASHBOARDS_PATH, "r", encoding="utf-8") as stream:
+            payload = json.load(stream)
+    except Exception as exc:
+        print(f"failed to load remote dashboards: {exc}")
+        return {}
+
+    records = None
+    if isinstance(payload, dict) and isinstance(payload.get("records"), dict):
+        records = payload.get("records")
+    elif isinstance(payload, list):
+        records = {str(index): item for index, item in enumerate(payload)}
+    elif isinstance(payload, dict):
+        records = payload
+
+    if not isinstance(records, dict):
+        return {}
+
+    normalized = {}
+    for key, record in records.items():
+        if not isinstance(record, dict):
+            continue
+
+        remote_id = clean_text(record.get("id")) or clean_text(key) or uuid.uuid4().hex
+        try:
+            origin = normalize_remote_origin(record.get("origin") or record.get("url") or record.get("host"))
+        except Exception:
+            continue
+
+        label = normalize_remote_label(record.get("label") or record.get("name")) or origin
+        note = normalize_remote_note(record.get("note") or record.get("remark"))
+        enabled = bool(record.get("enabled", True))
+
+        normalized[remote_id] = {
+            "id": remote_id,
+            "origin": origin,
+            "label": label,
+            "note": note,
+            "enabled": enabled,
+            "created_at": clean_text(record.get("created_at")) or now_iso(),
+            "updated_at": clean_text(record.get("updated_at")) or now_iso(),
+        }
+
+    return normalized
+
+
+def persist_remote_dashboards_records_locked():
+    atomic_write_json(
+        REMOTE_DASHBOARDS_PATH,
+        {
+            "version": 1,
+            "updated_at": now_iso(),
+            "records": remote_dashboards,
+        },
+    )
+
+
 def resolve_device_metadata(payload, ip_address=""):
     keys = device_metadata_keys_for_payload(payload, ip_address)
     with metadata_lock:
@@ -534,6 +649,7 @@ def apply_device_metadata(device):
 
 
 device_metadata = load_device_metadata_records()
+remote_dashboards = load_remote_dashboards_records()
 
 
 def normalize_device_payload(payload, ip_address):
@@ -593,6 +709,13 @@ def normalize_device_payload(payload, ip_address):
         cmm_used_percent = None
 
     return {
+        "device_key": f"local:{ip_address}",
+        "source_kind": "local",
+        "source_id": "local",
+        "source_origin": "",
+        "site_key": "local",
+        "site_label": DASHBOARD_SITE_LABEL,
+        "site_note": DASHBOARD_SITE_NOTE,
         "ip": ip_address,
         "hostname": hostname,
         "display_name": hostname,
@@ -688,7 +811,8 @@ def build_summary(devices):
 
     cpu_values = []
     for device in devices:
-        summary["device_types"][device["device_type"]] = summary["device_types"].get(device["device_type"], 0) + 1
+        device_type = device.get("device_type") or "Generic Linux"
+        summary["device_types"][device_type] = summary["device_types"].get(device_type, 0) + 1
         if device.get("is_ax"):
             summary["ax_count"] += 1
         if device.get("gpu_present"):
@@ -733,6 +857,17 @@ def extract_ax_model_key(device):
     return match.group(0).lower() if match else ""
 
 
+def normalize_site_tag_key(value, limit=40):
+    text = clean_text(value).lower()
+    if not text:
+        return ""
+    text = re.sub(r"\s+", "_", text)
+    text = re.sub(r"[^\w\-]+", "", text)
+    if len(text) > limit:
+        text = text[:limit]
+    return text.strip("_-")
+
+
 def compute_device_filter_tags(device):
     text = device_filter_search_text(device)
     tags = {"all"}
@@ -747,23 +882,23 @@ def compute_device_filter_tags(device):
         tags.add("axera")
         if ax_model:
             tags.add(f"ax:{ax_model}")
-        return tags
-
-    if is_raspberry_pi:
+    elif is_raspberry_pi:
         tags.add("raspberry_pi")
-        return tags
-
-    if is_x86:
+    elif is_x86:
         tags.add("x86")
-        return tags
+    else:
+        tags.add("other")
 
-    tags.add("other")
+    site_label = clean_text(device.get("site_label"))
+    if site_tag_key := normalize_site_tag_key(site_label):
+        tags.add(f"site:{site_tag_key}")
     return tags
 
 
 def build_filter_tag_summary(devices):
     broad_counts = {"axera": 0, "x86": 0, "raspberry_pi": 0, "other": 0}
     specific_ax_counts = {}
+    site_counts = {}
 
     for device in devices:
         tags = compute_device_filter_tags(device)
@@ -772,6 +907,9 @@ def build_filter_tag_summary(devices):
                 continue
             if tag.startswith("ax:"):
                 specific_ax_counts[tag] = specific_ax_counts.get(tag, 0) + 1
+                continue
+            if tag.startswith("site:"):
+                site_counts[tag] = site_counts.get(tag, 0) + 1
                 continue
             broad_counts[tag] = broad_counts.get(tag, 0) + 1
 
@@ -783,6 +921,8 @@ def build_filter_tag_summary(devices):
     for tag in ("x86", "raspberry_pi", "other"):
         if broad_counts.get(tag):
             summary.append({"tag": tag, "count": broad_counts[tag]})
+    for tag in sorted(site_counts.keys()):
+        summary.append({"tag": tag, "count": site_counts[tag]})
     return summary
 
 
@@ -805,6 +945,176 @@ def normalize_query_tags(raw_value):
         seen.add(tag)
         tags.append(tag)
     return tags
+
+
+def http_request_json(url, method="GET", body=None, timeout_seconds=REMOTE_FETCH_TIMEOUT_SECONDS):
+    headers = {"Accept": "application/json"}
+    data = None
+    if body is not None:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
+        raw = response.read() or b""
+    try:
+        return json.loads(raw.decode("utf-8", errors="replace"))
+    except Exception as exc:
+        raise RuntimeError(f"invalid json response from {url}: {exc}") from exc
+
+
+def ensure_serialized_history(payload):
+    history = payload.get("history")
+    if not isinstance(history, dict):
+        payload["history"] = {"cpu": [], "mem": [], "gpu": [], "cmm": []}
+        return payload
+
+    normalized = {}
+    for key in ("cpu", "mem", "gpu", "cmm"):
+        values = history.get(key)
+        normalized[key] = values if isinstance(values, list) else []
+    payload["history"] = normalized
+    return payload
+
+
+def snapshot_enabled_remote_dashboards():
+    with remote_lock:
+        remotes = [dict(item) for item in remote_dashboards.values() if item.get("enabled")]
+    remotes.sort(key=lambda item: (item.get("label") or "", item.get("origin") or ""))
+    return remotes
+
+
+def fetch_remote_devices(remote, requested_tags=None):
+    origin = clean_text(remote.get("origin"))
+    if not origin:
+        return []
+    origin = origin.rstrip("/")
+    requested_tags = requested_tags or []
+
+    query_url = f"{origin}/api/devices/query"
+    try:
+        payload = http_request_json(
+            query_url,
+            method="POST",
+            body={"tags": requested_tags, "include_history": False},
+            timeout_seconds=REMOTE_FETCH_TIMEOUT_SECONDS,
+        )
+        devices = payload.get("devices")
+        if isinstance(devices, list):
+            return devices
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            return []
+    except Exception:
+        return []
+
+    devices_url = f"{origin}/api/devices"
+    try:
+        payload = http_request_json(devices_url, method="GET", timeout_seconds=REMOTE_FETCH_TIMEOUT_SECONDS)
+        devices = payload.get("devices")
+        if isinstance(devices, list):
+            for device in devices:
+                if isinstance(device, dict):
+                    device.pop("history", None)
+            return devices
+    except Exception:
+        return []
+
+    return []
+
+
+def attach_source_fields(payload, *, device_key, source_kind, source_id, source_origin, site_key, site_label, site_note):
+    payload["device_key"] = device_key
+    payload["source_kind"] = source_kind
+    payload["source_id"] = source_id
+    payload["source_origin"] = source_origin
+    payload["site_key"] = site_key
+    payload["site_label"] = site_label
+    payload["site_note"] = site_note
+    return payload
+
+
+def snapshot_local_devices(include_history=True):
+    with device_lock:
+        devices = [device for _, device in sorted(online_devices.items(), key=lambda item: item[0])]
+
+    serialized = []
+    for device in devices:
+        payload = serialize_device(device) if include_history else dict(device)
+        if not include_history:
+            payload.pop("history", None)
+        serialized.append(payload)
+    return serialized
+
+
+def collect_combined_devices(include_history=True, include_remotes=False, requested_tags=None):
+    combined = []
+    local_devices = snapshot_local_devices(include_history=include_history)
+    for payload in local_devices:
+        payload.setdefault("device_key", f"local:{clean_text(payload.get('ip'))}")
+        attach_source_fields(
+            payload,
+            device_key=payload["device_key"],
+            source_kind="local",
+            source_id="local",
+            source_origin="",
+            site_key="local",
+            site_label=clean_text(payload.get("site_label")) or DASHBOARD_SITE_LABEL,
+            site_note=clean_text(payload.get("site_note")) or DASHBOARD_SITE_NOTE,
+        )
+        if include_history:
+            ensure_serialized_history(payload)
+        combined.append(payload)
+
+    if not include_remotes:
+        return combined
+
+    requested_tags = requested_tags or []
+    forwarded_tags = [tag for tag in requested_tags if not tag.startswith("site:")]
+    remotes = snapshot_enabled_remote_dashboards()
+    if not remotes:
+        return combined
+
+    max_workers = max(1, min(REMOTE_FETCH_MAX_PARALLEL, len(remotes)))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {executor.submit(fetch_remote_devices, remote, forwarded_tags): remote for remote in remotes}
+        for future in as_completed(future_map):
+            remote = future_map[future]
+            try:
+                remote_devices = future.result() or []
+            except Exception:
+                continue
+
+            remote_id = clean_text(remote.get("id")) or ""
+            remote_origin = clean_text(remote.get("origin"))
+            remote_label = clean_text(remote.get("label")) or remote_origin
+            remote_note = clean_text(remote.get("note"))
+
+            for device in remote_devices:
+                if not isinstance(device, dict):
+                    continue
+                ip_address = clean_text(device.get("ip"))
+                if not ip_address:
+                    continue
+
+                payload = dict(device)
+                payload.pop("history", None)
+                attach_source_fields(
+                    payload,
+                    device_key=f"remote:{remote_id}:{ip_address}",
+                    source_kind="remote",
+                    source_id=remote_id,
+                    source_origin=remote_origin,
+                    site_key=remote_id,
+                    site_label=remote_label,
+                    site_note=remote_note,
+                )
+                if include_history:
+                    ensure_serialized_history(payload)
+                combined.append(payload)
+
+    combined.sort(key=lambda item: (item.get("site_label") or "", item.get("ip") or ""))
+    return combined
 
 
 def get_online_devices_by_ip():
@@ -2485,10 +2795,78 @@ def api_device_metadata():
     return jsonify({"ok": True, "device": payload})
 
 
+@app.route("/api/remotes")
+def api_remotes():
+    with remote_lock:
+        remotes = [dict(item) for item in remote_dashboards.values()]
+    remotes.sort(key=lambda item: (item.get("label") or "", item.get("origin") or ""))
+    return jsonify({"ok": True, "remotes": remotes})
+
+
+@app.route("/api/remotes", methods=["POST"])
+def api_remotes_upsert():
+    body = request.get_json(silent=True) or {}
+    remote_id = clean_text(body.get("id"))
+
+    try:
+        origin = normalize_remote_origin(body.get("origin") or body.get("url") or body.get("host"))
+    except Exception as exc:
+        return jsonify({"ok": False, "error": "invalid_origin", "message": str(exc)}), 400
+
+    label = normalize_remote_label(body.get("label") or body.get("name")) or origin
+    note = normalize_remote_note(body.get("note") or body.get("remark"))
+    enabled = bool(body.get("enabled", True))
+
+    with remote_lock:
+        if remote_id and remote_id in remote_dashboards:
+            record = dict(remote_dashboards[remote_id])
+            record.update(
+                {
+                    "origin": origin,
+                    "label": label,
+                    "note": note,
+                    "enabled": enabled,
+                    "updated_at": now_iso(),
+                }
+            )
+        else:
+            remote_id = uuid.uuid4().hex
+            record = {
+                "id": remote_id,
+                "origin": origin,
+                "label": label,
+                "note": note,
+                "enabled": enabled,
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+            }
+
+        remote_dashboards[remote_id] = record
+        persist_remote_dashboards_records_locked()
+        payload = dict(record)
+
+    return jsonify({"ok": True, "remote": payload})
+
+
+@app.route("/api/remotes/<remote_id>", methods=["DELETE"])
+def api_remotes_delete(remote_id):
+    remote_id = clean_text(remote_id)
+    if not remote_id:
+        return jsonify({"ok": False, "error": "missing_id"}), 400
+
+    with remote_lock:
+        if remote_id not in remote_dashboards:
+            return jsonify({"ok": False, "error": "remote_not_found"}), 404
+        record = remote_dashboards.pop(remote_id, None)
+        persist_remote_dashboards_records_locked()
+
+    return jsonify({"ok": True, "remote": record})
+
+
 @app.route("/api/devices")
 def api_devices():
-    with device_lock:
-        devices = [serialize_device(device) for _, device in sorted(online_devices.items(), key=lambda item: item[0])]
+    include_remotes = clean_text(request.args.get("include_remotes")).lower() in ("1", "true", "yes", "on")
+    devices = collect_combined_devices(include_history=True, include_remotes=include_remotes)
     return jsonify(
         {
             "generated_at": int(time.time() * 1000),
@@ -2503,25 +2881,23 @@ def api_devices_query():
     body = request.get_json(silent=True) or {}
     requested_tags = normalize_query_tags(body.get("tags") if "tags" in body else body.get("tag"))
     include_history = bool(body.get("include_history"))
+    include_remotes = bool(body.get("include_remotes"))
 
-    with device_lock:
-        devices_sorted = [device for _, device in sorted(online_devices.items(), key=lambda item: item[0])]
-        tag_summary = build_filter_tag_summary(devices_sorted)
+    devices_sorted = collect_combined_devices(
+        include_history=include_history, include_remotes=include_remotes, requested_tags=requested_tags
+    )
+    tag_summary = build_filter_tag_summary(devices_sorted)
 
-        filtered_devices = []
-        for device in devices_sorted:
-            tags = compute_device_filter_tags(device)
-            if requested_tags and not any(tag in tags for tag in requested_tags):
-                continue
-
-            if include_history:
-                payload = serialize_device(device)
-            else:
-                payload = dict(device)
-                payload.pop("history", None)
-
-            payload["filter_tags"] = sorted(tag for tag in tags if tag != "all")
-            filtered_devices.append(payload)
+    filtered_devices = []
+    for device in devices_sorted:
+        tags = compute_device_filter_tags(device)
+        if requested_tags and not any(tag in tags for tag in requested_tags):
+            continue
+        payload = dict(device)
+        if not include_history:
+            payload.pop("history", None)
+        payload["filter_tags"] = sorted(tag for tag in tags if tag != "all")
+        filtered_devices.append(payload)
 
     return jsonify(
         {
@@ -2530,6 +2906,7 @@ def api_devices_query():
                 "tags": requested_tags,
             },
             "tags": tag_summary,
+            "include_remotes": include_remotes,
             "device_count": len(filtered_devices),
             "devices": filtered_devices,
         }

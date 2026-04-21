@@ -841,6 +841,35 @@
             flex-wrap: wrap;
         }
 
+        .remote-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .remote-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 10px;
+            border-radius: 16px;
+            border: 1px solid rgba(29, 39, 48, 0.08);
+            background: rgba(255, 255, 255, 0.64);
+        }
+
+        .remote-row-main,
+        .remote-row-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .remote-row-actions {
+            justify-content: flex-end;
+        }
+
         .update-status {
             display: grid;
             gap: 10px;
@@ -1305,6 +1334,16 @@
         <section class="filter-panel">
             <div class="filter-head">
                 <div class="filter-title">
+                    <strong>位置筛选</strong>
+                    <span>可多选，不勾选就是全部显示</span>
+                </div>
+                <button class="btn-secondary" id="btn-open-remotes">远程面板</button>
+            </div>
+            <div class="filter-strip" id="site-strip"></div>
+        </section>
+        <section class="filter-panel">
+            <div class="filter-head">
+                <div class="filter-title">
                     <strong>型号筛选</strong>
                     <span>可多选，不勾选就是全部显示</span>
                 </div>
@@ -1413,7 +1452,7 @@
             <div class="detail-editor">
                 <div class="detail-editor-head">
                     <strong>自定义标题 / 备注</strong>
-                    <span>保存在当前 Dashboard 主机，本机刷新或服务重启后仍保留</span>
+                    <span id="detail-editor-note">保存在当前 Dashboard 主机，本机刷新或服务重启后仍保留</span>
                 </div>
                 <div class="detail-editor-grid">
                     <label>
@@ -1556,6 +1595,53 @@
         </div>
     </div>
 
+    <div class="update-modal" id="remote-modal">
+        <div class="update-shell">
+            <div class="update-top">
+                <div>
+                    <h3>远程 Dashboard</h3>
+                    <p>聚合其他办公室面板的设备列表到当前页面（远程设备为只读展示）。</p>
+                </div>
+                <button class="btn-secondary" id="btn-remote-close">关闭</button>
+            </div>
+            <div class="update-body">
+                <div class="update-grid">
+                    <div class="update-card">
+                        <h4>已添加</h4>
+                        <div class="remote-list" id="remote-list"></div>
+                        <div class="update-note">远程面板需要升级到包含 `/api/devices/query` 的版本；否则会回退到 `/api/devices` 拉取（仅基础信息）。</div>
+                    </div>
+                    <div class="update-card">
+                        <h4>添加 / 修改</h4>
+                        <div class="update-form-grid">
+                            <label>
+                                服务器（IP:端口）
+                                <input id="remote-origin" placeholder="10.126.35.10:25000 或 http://10.126.35.10:25000">
+                            </label>
+                            <label>
+                                位置标签
+                                <input id="remote-label" placeholder="比如：深圳办公室">
+                            </label>
+                        </div>
+                        <label>
+                            备注
+                            <textarea id="remote-note" placeholder="比如：AX650 板子 / 产线 A 区"></textarea>
+                        </label>
+                        <div class="update-inline">
+                            <label class="remember">
+                                <input id="remote-enabled" type="checkbox" checked>
+                                启用
+                            </label>
+                            <button class="btn-primary" id="btn-remote-save">保存</button>
+                            <button class="btn-secondary" id="btn-remote-reset">清空</button>
+                        </div>
+                        <div class="update-note">保存后会自动刷新设备列表，位置筛选中会出现对应标签。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="toast" id="toast"></div>
 
     <script>
@@ -1569,9 +1655,10 @@
             devices: [],
             selectedDevices: new Set(),
             selectedModelFilters: new Set(),
+            selectedSiteFilters: new Set(),
             currentDevice: null,
-            detailDeviceIp: null,
-            detailDraftIp: null,
+            detailDeviceKey: null,
+            detailDraftKey: null,
             detailDraftTitle: '',
             detailDraftNote: '',
             detailMetadataDirty: false,
@@ -1588,6 +1675,9 @@
             updateJobId: null,
             updateJobStatus: null,
             updatePollTimer: null,
+            remotes: [],
+            remoteEditingId: null,
+            devicesRefreshing: false,
         };
 
         const LOCAL_CREDENTIALS_KEY = 'broadcast.axera.local_terminal_credentials.v2';
@@ -1596,6 +1686,7 @@
         const elements = {
             summaryGrid: document.getElementById('summary-grid'),
             typeStrip: document.getElementById('type-strip'),
+            siteStrip: document.getElementById('site-strip'),
             modelStrip: document.getElementById('model-strip'),
             devicesGrid: document.getElementById('devices-grid'),
             visibleCount: document.getElementById('visible-count'),
@@ -1609,6 +1700,7 @@
             detailTitleInput: document.getElementById('detail-title-input'),
             detailNoteInput: document.getElementById('detail-note-input'),
             detailEditorStatus: document.getElementById('detail-editor-status'),
+            detailEditorNote: document.getElementById('detail-editor-note'),
             btnDetailSave: document.getElementById('btn-detail-save'),
             btnDetailReset: document.getElementById('btn-detail-reset'),
             updateModal: document.getElementById('update-modal'),
@@ -1661,6 +1753,16 @@
             btnWebsshOpen: document.getElementById('btn-webssh-open'),
             btnWebsshOpenMain: document.getElementById('btn-webssh-open-main'),
             btnWebsshCopy: document.getElementById('btn-webssh-copy'),
+            btnOpenRemotes: document.getElementById('btn-open-remotes'),
+            remoteModal: document.getElementById('remote-modal'),
+            btnRemoteClose: document.getElementById('btn-remote-close'),
+            remoteList: document.getElementById('remote-list'),
+            remoteOrigin: document.getElementById('remote-origin'),
+            remoteLabel: document.getElementById('remote-label'),
+            remoteNote: document.getElementById('remote-note'),
+            remoteEnabled: document.getElementById('remote-enabled'),
+            btnRemoteSave: document.getElementById('btn-remote-save'),
+            btnRemoteReset: document.getElementById('btn-remote-reset'),
             dashboardPort: document.getElementById('dashboard-port'),
         };
 
@@ -1746,7 +1848,8 @@
                 return;
             }
             const nextDevice = annotateDeviceWithLocalCredential(devicePayload);
-            const index = state.devices.findIndex((item) => item.ip === nextDevice.ip);
+            const nextKey = nextDevice.device_key || (nextDevice.ip ? `local:${nextDevice.ip}` : '');
+            const index = state.devices.findIndex((item) => (item.device_key || item.ip) === nextKey);
             if (index >= 0) {
                 state.devices.splice(index, 1, nextDevice);
             } else {
@@ -1819,7 +1922,33 @@
             return exact || telnetCreds[0];
         }
 
+        function ensureDeviceHistory(device) {
+            if (!device) return device;
+            if (!device.history || typeof device.history !== 'object') {
+                device.history = { cpu: [], mem: [], gpu: [], cmm: [] };
+                return device;
+            }
+            device.history = {
+                cpu: Array.isArray(device.history.cpu) ? device.history.cpu : [],
+                mem: Array.isArray(device.history.mem) ? device.history.mem : [],
+                gpu: Array.isArray(device.history.gpu) ? device.history.gpu : [],
+                cmm: Array.isArray(device.history.cmm) ? device.history.cmm : [],
+            };
+            return device;
+        }
+
         function annotateDeviceWithLocalCredential(device) {
+            ensureDeviceHistory(device);
+            device.device_key = device.device_key || (device.ip ? `local:${device.ip}` : '');
+            device.source_kind = device.source_kind || 'local';
+            device.site_key = device.site_key || (device.source_kind === 'local' ? 'local' : device.source_id || 'remote');
+            device.site_label = device.site_label || (device.source_kind === 'local' ? '本地' : '远程');
+
+            if (device.source_kind !== 'local') {
+                device.hasLocalCredential = false;
+                device.localCredential = null;
+                return device;
+            }
             const credential = getPreferredTelnetCredential(device);
             device.hasLocalCredential = !!credential;
             device.localCredential = credential;
@@ -1937,11 +2066,42 @@
             return filters;
         }
 
+        function buildSiteFilters(devices) {
+            const counts = new Map();
+            devices.forEach((device) => {
+                const key = device.site_key || (device.source_kind === 'local' ? 'local' : device.source_id || 'remote');
+                const label = device.site_label || (key === 'local' ? '本地' : '远程');
+                const current = counts.get(key) || { key, label, count: 0 };
+                current.count += 1;
+                counts.set(key, current);
+            });
+
+            const items = [...counts.values()].sort((a, b) => {
+                if (a.key === 'local') return -1;
+                if (b.key === 'local') return 1;
+                return String(a.label || '').localeCompare(String(b.label || ''), 'zh-CN', { numeric: true, sensitivity: 'base' });
+            });
+
+            return [{ key: 'all', label: '全部', count: devices.length }, ...items];
+        }
+
         function getVisibleDevices() {
-            if (!state.selectedModelFilters.size) {
+            if (!state.selectedModelFilters.size && !state.selectedSiteFilters.size) {
                 return state.devices;
             }
+
             return state.devices.filter((device) => {
+                if (state.selectedSiteFilters.size) {
+                    const siteKey = device.site_key || (device.source_kind === 'local' ? 'local' : device.source_id || 'remote');
+                    if (!state.selectedSiteFilters.has(siteKey)) {
+                        return false;
+                    }
+                }
+
+                if (!state.selectedModelFilters.size) {
+                    return true;
+                }
+
                 const tags = getDeviceFilterTags(device);
                 for (const filterKey of state.selectedModelFilters) {
                     if (tags.has(filterKey)) {
@@ -1950,6 +2110,69 @@
                 }
                 return false;
             });
+        }
+
+        function renderSiteFilters() {
+            const filters = buildSiteFilters(state.devices);
+            const filterKeys = new Set(filters.map((item) => item.key));
+            state.selectedSiteFilters = new Set(
+                [...state.selectedSiteFilters].filter((key) => key !== 'all' && filterKeys.has(key))
+            );
+
+            const allActive = state.selectedSiteFilters.size === 0;
+            const filterButtons = [
+                `
+                    <button
+                        class="filter-chip ${allActive ? 'active' : ''}"
+                        onclick="clearDeviceSiteFilters()"
+                    >
+                        <span class="filter-chip-mark">${allActive ? '✓' : ''}</span>
+                        <span>全部</span>
+                        <strong>${state.devices.length}</strong>
+                    </button>
+                `,
+            ];
+
+            filters
+                .filter((filter) => filter.key !== 'all')
+                .forEach((filter) => {
+                    const active = state.selectedSiteFilters.has(filter.key);
+                    filterButtons.push(`
+                        <button
+                            class="filter-chip ${active ? 'active' : ''}"
+                            onclick="toggleDeviceSiteFilter('${filter.key}')"
+                            ${filter.count === 0 ? 'disabled' : ''}
+                        >
+                            <span class="filter-chip-mark">${active ? '✓' : ''}</span>
+                            <span>${escapeHtml(filter.label)}</span>
+                            <strong>${filter.count}</strong>
+                        </button>
+                    `);
+                });
+
+            elements.siteStrip.innerHTML = filterButtons.join('');
+        }
+
+        function clearDeviceSiteFilters() {
+            state.selectedSiteFilters.clear();
+            renderSiteFilters();
+            renderDevices();
+            syncSelectedCount();
+        }
+
+        function toggleDeviceSiteFilter(siteKey) {
+            if (!siteKey || siteKey === 'all') {
+                clearDeviceSiteFilters();
+                return;
+            }
+            if (state.selectedSiteFilters.has(siteKey)) {
+                state.selectedSiteFilters.delete(siteKey);
+            } else {
+                state.selectedSiteFilters.add(siteKey);
+            }
+            renderSiteFilters();
+            renderDevices();
+            syncSelectedCount();
         }
 
         function renderModelFilters() {
@@ -2176,7 +2399,7 @@
                             return;
                         }
                         seen.add(expandedHost);
-                        const onlineDevice = getDevice(expandedHost);
+                        const onlineDevice = getLocalDeviceByIp(expandedHost);
                         if (onlineDevice) {
                             entries.push({
                                 ip: onlineDevice.ip,
@@ -2198,7 +2421,7 @@
                     return;
                 }
                 seen.add(host);
-                const onlineDevice = getDevice(host);
+                const onlineDevice = getLocalDeviceByIp(host);
                 if (onlineDevice) {
                     entries.push({
                         ip: onlineDevice.ip,
@@ -2223,7 +2446,7 @@
                     return;
                 }
                 seen.add(host);
-                const onlineDevice = getDevice(host);
+                const onlineDevice = getLocalDeviceByIp(host);
                 if (onlineDevice) {
                     entries.push({
                         ip: onlineDevice.ip,
@@ -2260,28 +2483,36 @@
         }
 
         function getSelectedDevices() {
-            return state.devices.filter((device) => state.selectedDevices.has(device.ip));
+            return state.devices.filter((device) => device.source_kind === 'local' && state.selectedDevices.has(device.device_key));
         }
 
         function syncSelectedCount() {
             const visibleDevices = getVisibleDevices();
+            const visibleLocalCount = visibleDevices.filter((device) => device.source_kind === 'local').length;
             const count = state.selectedDevices.size;
             elements.selectedCount.textContent = String(count);
             elements.visibleCount.textContent = String(visibleDevices.length);
             elements.btnOpenUpdate.disabled = count === 0;
             elements.btnClearSelection.disabled = count === 0;
-            elements.btnSelectAll.disabled = visibleDevices.length === 0;
-            elements.btnSelectAll.textContent = state.selectedModelFilters.size === 0
-                ? '全选在线设备'
-                : `全选当前筛选 (${visibleDevices.length})`;
+            elements.btnSelectAll.disabled = visibleLocalCount === 0;
+            const filtered = state.selectedModelFilters.size > 0 || state.selectedSiteFilters.size > 0;
+            elements.btnSelectAll.textContent = !filtered
+                ? '全选本地在线设备'
+                : `全选当前筛选本地 (${visibleLocalCount})`;
             elements.btnOpenInstall.disabled = false;
         }
 
-        function toggleDeviceSelection(ip, checked) {
+        function toggleDeviceSelection(deviceKey, checked) {
+            const device = getDevice(deviceKey);
+            if (device && device.source_kind !== 'local') {
+                showToast('远程设备仅展示，请到对应办公室 Dashboard 操作');
+                renderDevices();
+                return;
+            }
             if (checked) {
-                state.selectedDevices.add(ip);
+                state.selectedDevices.add(deviceKey);
             } else {
-                state.selectedDevices.delete(ip);
+                state.selectedDevices.delete(deviceKey);
             }
             syncSelectedCount();
             if (elements.updateModal.classList.contains('open')) {
@@ -2290,7 +2521,9 @@
         }
 
         function selectAllDevices() {
-            getVisibleDevices().forEach((device) => state.selectedDevices.add(device.ip));
+            getVisibleDevices()
+                .filter((device) => device.source_kind === 'local')
+                .forEach((device) => state.selectedDevices.add(device.device_key));
             renderDevices();
             syncSelectedCount();
             if (elements.updateModal.classList.contains('open')) {
@@ -2465,20 +2698,24 @@
 
         function syncDetailEditorButtons() {
             const hasContent = !!(elements.detailTitleInput.value.trim() || elements.detailNoteInput.value.trim());
-            elements.btnDetailSave.disabled = state.detailMetadataSaving || !state.detailDeviceIp;
-            elements.btnDetailReset.disabled = state.detailMetadataSaving || !state.detailDeviceIp || !hasContent;
+            const device = state.detailDeviceKey ? getDevice(state.detailDeviceKey) : null;
+            const editable = !!device && device.source_kind === 'local';
+            elements.detailTitleInput.disabled = !editable;
+            elements.detailNoteInput.disabled = !editable;
+            elements.btnDetailSave.disabled = state.detailMetadataSaving || !editable;
+            elements.btnDetailReset.disabled = state.detailMetadataSaving || !editable || !hasContent;
         }
 
         function syncDetailDraftFromDevice(device, force = false) {
             if (!device) {
                 return;
             }
-            const sameDevice = state.detailDraftIp === device.ip;
+            const sameDevice = state.detailDraftKey === device.device_key;
             if (!force && sameDevice && state.detailMetadataDirty) {
                 syncDetailEditorButtons();
                 return;
             }
-            state.detailDraftIp = device.ip;
+            state.detailDraftKey = device.device_key;
             state.detailDraftTitle = device.custom_title || '';
             state.detailDraftNote = device.custom_note || '';
             state.detailMetadataDirty = false;
@@ -2489,7 +2726,11 @@
         }
 
         function handleDetailDraftInput() {
-            if (!state.detailDeviceIp) {
+            if (!state.detailDeviceKey) {
+                return;
+            }
+            const device = getDevice(state.detailDeviceKey);
+            if (!device || device.source_kind !== 'local') {
                 return;
             }
             state.detailDraftTitle = elements.detailTitleInput.value;
@@ -2500,9 +2741,13 @@
         }
 
         async function saveDeviceMetadata(clear = false) {
-            const device = getDevice(state.detailDeviceIp);
+            const device = getDevice(state.detailDeviceKey);
             if (!device) {
                 showToast('设备已离线，无法保存');
+                return;
+            }
+            if (device.source_kind !== 'local') {
+                showToast('远程设备只读，请到对应办公室 Dashboard 编辑');
                 return;
             }
 
@@ -2645,9 +2890,13 @@
         }
 
         function renderDevice(device) {
-            const selected = state.selectedDevices.has(device.ip);
+            const deviceKey = device.device_key || device.ip;
+            const isLocal = (device.source_kind || 'local') === 'local';
+            const selected = state.selectedDevices.has(deviceKey);
             const showHostname = !!(device.custom_title && device.hostname && device.hostname !== device.display_name);
             const isNew = isDeviceNew(device);
+            const siteLabel = device.site_label || (isLocal ? '本地' : '远程');
+            const siteTitle = [device.site_note, device.source_origin].filter(Boolean).join(' · ');
             return `
                 <article class="device-card ${isNew ? 'has-new' : ''}">
                     ${isNew ? '<div class="new-badge">NEW</div>' : ''}
@@ -2664,16 +2913,17 @@
                             ${device.custom_note ? `<div class="device-note-preview">${escapeHtml(device.custom_note)}</div>` : ''}
                         </div>
                         <div class="device-aside">
-                            <div class="status">Online</div>
+                            <div class="status">${isLocal ? 'Online' : 'Remote'}</div>
                             <label class="device-select">
-                                <input type="checkbox" ${selected ? 'checked' : ''} onchange="toggleDeviceSelection('${device.ip}', this.checked)">
-                                更新
+                                <input type="checkbox" ${selected ? 'checked' : ''} ${isLocal ? '' : 'disabled'} onchange="toggleDeviceSelection('${deviceKey}', this.checked)">
+                                ${isLocal ? '更新' : '只读'}
                             </label>
                         </div>
                     </div>
 
                     <div class="info-row">
                         <div class="chip">IP <strong>${escapeHtml(device.ip)}</strong></div>
+                        <div class="chip" ${siteTitle ? `title="${escapeHtml(siteTitle)}"` : ''}>位置 <strong>${escapeHtml(siteLabel)}</strong></div>
                         <div class="chip">用户 <strong>${escapeHtml(device.default_user)}</strong></div>
                         <div class="chip">架构 <strong>${escapeHtml(device.arch || device.machine || 'N/A')}</strong></div>
                         ${device.is_ax && device.version ? `<div class="chip">AX 版本 <strong>${escapeHtml(device.version)}</strong></div>` : ''}
@@ -2685,10 +2935,10 @@
                     <div class="metrics-grid">${renderMetricSet(device)}</div>
 
                     <div class="actions">
-                        <button class="btn-secondary" onclick="openDeviceDetail('${device.ip}')">详情</button>
-                        <button class="btn-primary" onclick="openTerminal('${device.ip}')">终端</button>
+                        <button class="btn-secondary" onclick="openDeviceDetail('${deviceKey}')">详情</button>
+                        ${isLocal ? `<button class="btn-primary" onclick="openTerminal('${deviceKey}')">终端</button>` : `<button class="btn-primary" onclick="openRemoteDashboard('${deviceKey}')">打开远程</button>`}
                         <button class="btn-secondary" onclick="copyText('${device.ip}')">复制 IP</button>
-                        ${device.hasLocalCredential ? `<button class="btn-ghost" onclick="clearPassword('${device.ip}')">清除本机 Telnet 密码</button>` : ''}
+                        ${device.hasLocalCredential ? `<button class="btn-ghost" onclick="clearPassword('${deviceKey}')">清除本机 Telnet 密码</button>` : ''}
                     </div>
                 </article>
             `;
@@ -2755,6 +3005,7 @@
                 ['主机名', device.hostname || 'N/A'],
                 ['用户', device.default_user],
                 ['IP', device.ip],
+                ['位置', device.site_label || '本地'],
                 ['系统', device.os_name],
                 ['系统 ID', device.os_id || 'N/A'],
                 ['兼容族', device.os_like || 'N/A'],
@@ -2776,6 +3027,12 @@
                 ['Shmem', formatBytesFromKb(device.mem_shmem_kb)],
             ];
 
+            if (device.site_note) {
+                details.push(['位置备注', device.site_note]);
+            }
+            if (device.source_kind !== 'local' && device.source_origin) {
+                details.push(['远程面板', device.source_origin]);
+            }
             if (device.gpu_present) {
                 details.push(['GPU 厂商', device.gpu_vendor || 'N/A']);
                 details.push(['GPU 占用', formatPercent(device.gpu_usage_percent !== null ? device.gpu_usage_percent : device.gpu_mem_used_percent)]);
@@ -2797,14 +3054,14 @@
         }
 
         function renderDetailModal() {
-            if (!state.detailDeviceIp) {
+            if (!state.detailDeviceKey) {
                 elements.detailModal.classList.remove('open');
                 return;
             }
-            const device = getDevice(state.detailDeviceIp);
+            const device = getDevice(state.detailDeviceKey);
             if (!device) {
-                state.detailDeviceIp = null;
-                state.detailDraftIp = null;
+                state.detailDeviceKey = null;
+                state.detailDraftKey = null;
                 state.detailMetadataDirty = false;
                 state.detailMetadataSaving = false;
                 setDetailEditorStatus('');
@@ -2812,8 +3069,12 @@
                 return;
             }
 
+            const siteLabel = device.site_label || (device.source_kind === 'local' ? '本地' : '远程');
+            elements.detailEditorNote.textContent = device.source_kind === 'local'
+                ? '保存在当前 Dashboard 主机，本机刷新或服务重启后仍保留'
+                : '远程设备只读展示；标题 / 备注请到对应办公室 Dashboard 编辑。';
             elements.detailHeading.textContent = device.display_name;
-            elements.detailSubheading.textContent = `${device.ip} · ${device.device_type} · ${device.os_name}`;
+            elements.detailSubheading.textContent = `${siteLabel} · ${device.ip} · ${device.device_type} · ${device.os_name}`;
             syncDetailDraftFromDevice(device);
             elements.detailSummary.innerHTML = `
                 <div class="tag">CPU <strong>${formatPercent(device.cpu_usage_percent)}</strong></div>
@@ -2830,16 +3091,16 @@
             elements.detailModal.classList.add('open');
         }
 
-        function openDeviceDetail(ip) {
-            state.detailDeviceIp = ip;
-            state.detailDraftIp = null;
+        function openDeviceDetail(deviceKey) {
+            state.detailDeviceKey = deviceKey;
+            state.detailDraftKey = null;
             state.detailMetadataDirty = false;
             renderDetailModal();
         }
 
         function closeDeviceDetail() {
-            state.detailDeviceIp = null;
-            state.detailDraftIp = null;
+            state.detailDeviceKey = null;
+            state.detailDraftKey = null;
             state.detailDraftTitle = '';
             state.detailDraftNote = '';
             state.detailMetadataDirty = false;
@@ -2849,13 +3110,23 @@
         }
 
         async function refreshDevices() {
+            if (state.devicesRefreshing) {
+                return;
+            }
+            state.devicesRefreshing = true;
             try {
-                const response = await fetch('/api/devices');
+                const response = await fetch('/api/devices?include_remotes=1');
                 const payload = await response.json();
                 state.devices = (payload.devices || []).map(annotateDeviceWithLocalCredential);
-                const onlineIps = new Set(state.devices.map((device) => device.ip));
-                state.selectedDevices = new Set([...state.selectedDevices].filter((ip) => onlineIps.has(ip)));
+                const onlineKeys = new Set(
+                    state.devices
+                        .filter((device) => device.source_kind === 'local')
+                        .map((device) => device.device_key)
+                        .filter(Boolean)
+                );
+                state.selectedDevices = new Set([...state.selectedDevices].filter((key) => onlineKeys.has(key)));
                 renderSummary(payload.summary || { device_count: 0, device_types: {} });
+                renderSiteFilters();
                 renderModelFilters();
                 renderDevices();
                 syncSelectedCount();
@@ -2865,11 +3136,17 @@
                 renderDetailModal();
             } catch (_) {
                 showToast('刷新设备列表失败');
+            } finally {
+                state.devicesRefreshing = false;
             }
         }
 
-        function getDevice(ip) {
-            return state.devices.find((item) => item.ip === ip) || null;
+        function getDevice(deviceKey) {
+            return state.devices.find((item) => (item.device_key || item.ip) === deviceKey) || null;
+        }
+
+        function getLocalDeviceByIp(ip) {
+            return state.devices.find((item) => item.source_kind === 'local' && item.ip === ip) || null;
         }
 
         function updateStatusClass(status) {
@@ -3048,6 +3325,172 @@
         function closeUpdateModal() {
             elements.updateModal.classList.remove('open');
             stopUpdatePolling();
+        }
+
+        function resetRemoteForm() {
+            state.remoteEditingId = null;
+            elements.remoteOrigin.value = '';
+            elements.remoteLabel.value = '';
+            elements.remoteNote.value = '';
+            elements.remoteEnabled.checked = true;
+        }
+
+        function openRemoteModal() {
+            elements.remoteModal.classList.add('open');
+            refreshRemotes();
+        }
+
+        function closeRemoteModal() {
+            elements.remoteModal.classList.remove('open');
+            resetRemoteForm();
+        }
+
+        function renderRemotes() {
+            const remotes = state.remotes || [];
+            if (!remotes.length) {
+                elements.remoteList.innerHTML = '<div class="tag">暂无远程面板，可在右侧添加。</div>';
+                return;
+            }
+
+            elements.remoteList.innerHTML = remotes.map((remote) => {
+                const note = remote.note ? `<div class="tag">${escapeHtml(remote.note)}</div>` : '';
+                const enabled = !!remote.enabled;
+                return `
+                    <div class="remote-row">
+                        <div class="remote-row-main">
+                            <div class="tag">位置 <strong>${escapeHtml(remote.label || '远程')}</strong></div>
+                            <div class="tag">地址 <strong>${escapeHtml(remote.origin || '')}</strong></div>
+                            ${note}
+                        </div>
+                        <div class="remote-row-actions">
+                            <label class="remember">
+                                <input type="checkbox" ${enabled ? 'checked' : ''} onchange="setRemoteEnabled('${remote.id}', this.checked)">
+                                启用
+                            </label>
+                            <button class="btn-secondary" onclick="editRemote('${remote.id}')">编辑</button>
+                            <button class="btn-danger" onclick="deleteRemote('${remote.id}')">删除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function refreshRemotes(silent = true) {
+            try {
+                const response = await fetch('/api/remotes');
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.message || payload.error || '获取远程面板失败');
+                }
+                state.remotes = Array.isArray(payload.remotes) ? payload.remotes : [];
+                renderRemotes();
+            } catch (error) {
+                if (!silent) {
+                    showToast(error.message || '获取远程面板失败');
+                }
+                elements.remoteList.innerHTML = '<div class="tag">获取远程面板失败</div>';
+            }
+        }
+
+        function editRemote(remoteId) {
+            const remote = (state.remotes || []).find((item) => item && item.id === remoteId);
+            if (!remote) {
+                showToast('远程面板不存在');
+                return;
+            }
+            state.remoteEditingId = remote.id;
+            elements.remoteOrigin.value = remote.origin || '';
+            elements.remoteLabel.value = remote.label || '';
+            elements.remoteNote.value = remote.note || '';
+            elements.remoteEnabled.checked = !!remote.enabled;
+            showToast(`编辑: ${remote.label || remote.origin}`);
+        }
+
+        async function saveRemoteFromForm() {
+            const origin = elements.remoteOrigin.value.trim();
+            const label = elements.remoteLabel.value.trim();
+            const note = elements.remoteNote.value.trim();
+            const enabled = elements.remoteEnabled.checked;
+
+            if (!origin) {
+                showToast('请输入远程面板地址');
+                return;
+            }
+
+            const body = {
+                origin,
+                label,
+                note,
+                enabled,
+            };
+            if (state.remoteEditingId) {
+                body.id = state.remoteEditingId;
+            }
+
+            try {
+                const response = await fetch('/api/remotes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.message || payload.error || '保存失败');
+                }
+
+                showToast('远程面板已保存');
+                await refreshRemotes(true);
+                resetRemoteForm();
+                refreshDevices();
+            } catch (error) {
+                showToast(error.message || '保存失败');
+            }
+        }
+
+        async function setRemoteEnabled(remoteId, enabled) {
+            const remote = (state.remotes || []).find((item) => item && item.id === remoteId);
+            if (!remote) return;
+            try {
+                const response = await fetch('/api/remotes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: remote.id,
+                        origin: remote.origin,
+                        label: remote.label,
+                        note: remote.note,
+                        enabled: !!enabled,
+                    }),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.message || payload.error || '更新失败');
+                }
+                await refreshRemotes(true);
+                refreshDevices();
+            } catch (error) {
+                showToast(error.message || '更新失败');
+            }
+        }
+
+        async function deleteRemote(remoteId) {
+            const remote = (state.remotes || []).find((item) => item && item.id === remoteId);
+            const name = remote ? (remote.label || remote.origin) : remoteId;
+            if (!window.confirm(`删除远程面板：${name} ?`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/remotes/${encodeURIComponent(remoteId)}`, { method: 'DELETE' });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.message || payload.error || '删除失败');
+                }
+                showToast('已删除远程面板');
+                await refreshRemotes(true);
+                refreshDevices();
+            } catch (error) {
+                showToast(error.message || '删除失败');
+            }
         }
 
         async function refreshUpdateJob() {
@@ -3448,17 +3891,37 @@
             }
         }
 
-        async function openTerminal(ip) {
-            const device = getDevice(ip);
+        function openRemoteDashboard(deviceKey) {
+            const device = getDevice(deviceKey);
             if (!device) {
                 showToast('设备已离线');
+                return;
+            }
+            const origin = String(device.source_origin || '').trim();
+            if (!origin) {
+                showToast('未配置远程面板地址');
+                return;
+            }
+            window.open(origin, '_blank', 'noopener');
+        }
+
+        async function openTerminal(deviceKey) {
+            const device = getDevice(deviceKey);
+            if (!device) {
+                showToast('设备已离线');
+                return;
+            }
+            if (device.source_kind !== 'local') {
+                showToast('远程设备请在对应办公室 Dashboard 打开终端');
+                openRemoteDashboard(deviceKey);
                 return;
             }
 
             state.currentDevice = device;
             state.pendingWebsshWindow = null;
             elements.terminalHeading.textContent = `Terminal · ${device.display_name}`;
-            elements.terminalSubheading.textContent = `${device.ip} · ${device.os_name} · ${device.device_type}`;
+            const siteLabel = device.site_label || '本地';
+            elements.terminalSubheading.textContent = `${siteLabel} · ${device.ip} · ${device.os_name} · ${device.device_type}`;
             elements.terminalOutput.textContent = '';
             openModal();
             await switchTerminalProtocol('ssh', { autoConnect: false });
@@ -3497,14 +3960,20 @@
             }
         }
 
-        function clearPassword(ip) {
-            removeLocalCredentialsByHost(ip);
-            const device = getDevice(ip);
-            if (device) {
-                device.hasLocalCredential = false;
-                device.localCredential = null;
+        function clearPassword(deviceKey) {
+            const device = getDevice(deviceKey);
+            if (!device) {
+                showToast('设备已离线');
+                return;
             }
-            showToast(`已清除当前浏览器为 ${ip} 保存的连接信息`);
+            if (device.source_kind !== 'local') {
+                showToast('远程设备不支持在当前页面管理 Telnet 密码');
+                return;
+            }
+            removeLocalCredentialsByHost(device.ip);
+            device.hasLocalCredential = false;
+            device.localCredential = null;
+            showToast(`已清除当前浏览器为 ${device.ip} 保存的连接信息`);
             refreshDevices();
         }
 
@@ -3577,6 +4046,10 @@
         elements.btnUpdateRefresh.addEventListener('click', refreshUpdateJob);
         elements.updateSubnetTargets.addEventListener('input', refreshUpdateSelectionPreview);
         elements.updateManualTargets.addEventListener('input', refreshUpdateSelectionPreview);
+        elements.btnOpenRemotes.addEventListener('click', openRemoteModal);
+        elements.btnRemoteClose.addEventListener('click', closeRemoteModal);
+        elements.btnRemoteSave.addEventListener('click', saveRemoteFromForm);
+        elements.btnRemoteReset.addEventListener('click', resetRemoteForm);
         elements.btnCtrlC.addEventListener('click', () => queueTerminalInput('\u0003'));
         elements.btnCtrlD.addEventListener('click', () => queueTerminalInput('\u0004'));
         elements.btnClearView.addEventListener('click', () => {
@@ -3607,6 +4080,10 @@
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && elements.modal.classList.contains('open')) {
                 closeModal();
+                return;
+            }
+            if (event.key === 'Escape' && elements.remoteModal.classList.contains('open')) {
+                closeRemoteModal();
                 return;
             }
             if (event.key === 'Escape' && elements.updateModal.classList.contains('open')) {
