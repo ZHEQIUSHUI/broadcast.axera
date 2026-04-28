@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim AS dist-builder
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS dist-builder
 
 WORKDIR /src
 

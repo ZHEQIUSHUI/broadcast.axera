@@ -20,26 +20,37 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
+      - uses: docker/setup-qemu-action@v4
+
       - uses: docker/setup-buildx-action@v4
 
-      - name: Build docker image (linux/amd64) + export tar
+      - name: Build docker images (amd64/arm64) + export tar
         run: |
           set -euo pipefail
           IMAGE_NAME=broadcast-axera-dashboard
           IMAGE_TAG="${GITHUB_REF_NAME}"
           if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
             IMAGE_TAG="latest"
-          elif [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
-            IMAGE_TAG="${GITHUB_SHA}"
           fi
 
-          docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
-          docker save "${IMAGE_NAME}:${IMAGE_TAG}" | gzip > "${IMAGE_NAME}-${IMAGE_TAG}-linux-amd64.tar.gz"
+          echo "[build] linux/amd64"
+          docker buildx build \
+            --platform linux/amd64 \
+            -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+            --output type=docker,dest=- \
+            . | gzip > "${IMAGE_NAME}-${IMAGE_TAG}-linux-amd64.tar.gz"
+
+          echo "[build] linux/arm64"
+          docker buildx build \
+            --platform linux/arm64 \
+            -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+            --output type=docker,dest=- \
+            . | gzip > "${IMAGE_NAME}-${IMAGE_TAG}-linux-arm64.tar.gz"
 
       - uses: actions/upload-artifact@v6
         with:
-          name: broadcast-axera-dashboard-linux-amd64
-          path: broadcast-axera-dashboard-*-linux-amd64.tar.gz
+          name: broadcast-axera-dashboard-linux-tars
+          path: broadcast-axera-dashboard-*-linux-*.tar.gz
           if-no-files-found: error
 
       - name: Move tag "latest" to this commit
@@ -60,5 +71,5 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           makeLatest: true
-          artifacts: broadcast-axera-dashboard-latest-linux-amd64.tar.gz
+          artifacts: broadcast-axera-dashboard-latest-linux-*.tar.gz
           omitBodyDuringUpdate: true

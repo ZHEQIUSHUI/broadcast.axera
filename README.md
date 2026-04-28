@@ -135,7 +135,11 @@ docker build -t broadcast-axera-dashboard:local .
 从 CI 下载镜像并导入（Actions Artifact / Release 里的 `*.tar.gz`）：
 
 ```bash
+# x86_64
 gzip -dc broadcast-axera-dashboard-*-linux-amd64.tar.gz | docker load
+
+# aarch64
+gzip -dc broadcast-axera-dashboard-*-linux-arm64.tar.gz | docker load
 ```
 
 运行（推荐：host 网络）：
