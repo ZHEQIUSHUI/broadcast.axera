@@ -8,29 +8,57 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build docker image (linux/amd64) + export tar
         run: |
           set -euo pipefail
           IMAGE_NAME=broadcast-axera-dashboard
           IMAGE_TAG="${GITHUB_REF_NAME}"
-          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            IMAGE_TAG="latest"
+          elif [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
             IMAGE_TAG="${GITHUB_SHA}"
           fi
 
           docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
           docker save "${IMAGE_NAME}:${IMAGE_TAG}" | gzip > "${IMAGE_NAME}-${IMAGE_TAG}-linux-amd64.tar.gz"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: broadcast-axera-dashboard-linux-amd64
           path: broadcast-axera-dashboard-*-linux-amd64.tar.gz
           if-no-files-found: error
 
+      - name: Move tag "latest" to this commit
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f latest "${GITHUB_SHA}"
+          git push -f origin latest
+
+      - name: Publish "latest" Release asset (overwrite)
+        if: github.ref == 'refs/heads/main'
+        uses: ncipollo/release-action@v1
+        with:
+          tag: latest
+          name: latest
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+          artifacts: broadcast-axera-dashboard-latest-linux-amd64.tar.gz
+          omitBodyDuringUpdate: true

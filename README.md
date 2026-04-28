@@ -124,6 +124,8 @@ http://<dashboard-ip>:25000
 
 > 注意：设备端 agent 默认向 `255.255.255.255:9999` 广播。为了确保容器能稳定收到 UDP 广播，推荐使用 `--network host`。
 
+本镜像默认会同时启动内置的 WebSSH2（用于网页 SSH 跳转），监听 `0.0.0.0:2222`。如果不想启用，可设置 `WEBSSH2_ENABLED=0`。
+
 本地构建：
 
 ```bash
@@ -146,11 +148,17 @@ docker run --rm -it \
   broadcast-axera-dashboard:local
 ```
 
+如果宿主机的 `2222` 端口已被占用，可改成：
+
+- `-e WEBSSH2_LISTEN_PORT=2223`
+- 同时设置 `-e WEBSSH2_URL_TEMPLATE='http://{dashboard_host}:2223/ssh/host/{host}'`
+
 运行（不使用 host 网络，使用端口映射）：
 
 ```bash
 docker run --rm -it \
   -p 25000:25000 \
+  -p 2222:2222 \
   -p 9999:9999/udp \
   -v "$(pwd)/.runtime:/app/.runtime" \
   broadcast-axera-dashboard:local
