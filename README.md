@@ -118,6 +118,46 @@ python3 dashboard.py
 http://<dashboard-ip>:25000
 ```
 
+### Docker 运行（推荐给快速部署）
+
+如果你不想在宿主机安装 Python 依赖，可以直接使用 Docker 镜像运行 Dashboard。
+
+> 注意：设备端 agent 默认向 `255.255.255.255:9999` 广播。为了确保容器能稳定收到 UDP 广播，推荐使用 `--network host`。
+
+本地构建：
+
+```bash
+docker build -t broadcast-axera-dashboard:local .
+```
+
+从 CI 下载镜像并导入（Actions Artifact / Release 里的 `*.tar.gz`）：
+
+```bash
+gzip -dc broadcast-axera-dashboard-*-linux-amd64.tar.gz | docker load
+```
+
+运行（推荐：host 网络）：
+
+```bash
+docker run --rm -it \
+  --network host \
+  -v "$(pwd)/.runtime:/app/.runtime" \
+  -e DASHBOARD_SITE_LABEL="本地" \
+  broadcast-axera-dashboard:local
+```
+
+运行（不使用 host 网络，使用端口映射）：
+
+```bash
+docker run --rm -it \
+  -p 25000:25000 \
+  -p 9999:9999/udp \
+  -v "$(pwd)/.runtime:/app/.runtime" \
+  broadcast-axera-dashboard:local
+```
+
+如果使用端口映射模式但收不到设备广播，建议把设备端 agent 改为单播到 Dashboard 宿主机 IP（设置环境变量 `BROADCAST_IP=<dashboard-host-ip>`）。
+
 ### 对外接口（设备列表 / Tag 筛选）
 
 Dashboard 启动后，其他人可通过 Dashboard 端口（默认 `25000`）获取设备列表，并通过 tag 进行筛选（tag 规则与页面“型号筛选”一致）。

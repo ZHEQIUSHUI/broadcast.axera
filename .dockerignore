@@ -1,0 +1,12 @@
+.git
+.github
+__pycache__/
+.runtime/
+nohup.out
+*.log
+*.tmp
+*.tar
+*.tar.gz
+node_modules/
+npm-debug.log*
+

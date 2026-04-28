@@ -1,0 +1,36 @@
+name: Docker Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build docker image (linux/amd64) + export tar
+        run: |
+          set -euo pipefail
+          IMAGE_NAME=broadcast-axera-dashboard
+          IMAGE_TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            IMAGE_TAG="${GITHUB_SHA}"
+          fi
+
+          docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+          docker save "${IMAGE_NAME}:${IMAGE_TAG}" | gzip > "${IMAGE_NAME}-${IMAGE_TAG}-linux-amd64.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: broadcast-axera-dashboard-linux-amd64
+          path: broadcast-axera-dashboard-*-linux-amd64.tar.gz
+          if-no-files-found: error
+
