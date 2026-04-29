@@ -50,7 +50,7 @@
 
 - SSH 页面默认通过 `webssh2` 新窗口打开，Dashboard 负责生成目标地址，不再在当前页直接承载 SSH 交互。
 - `Telnet` 仍然使用 Dashboard 当前页面内置终端，适合没有 SSH 的设备。
-- 如果需要这个网页版 SSH 能力，需要单独安装并运行一个 `webssh2` 服务。
+- 如果你是直接运行 `python3 dashboard.py`（非 Docker），需要单独安装并运行一个 `webssh2` 服务；如果使用本项目的 Docker 镜像，则镜像已内置并默认启动一个 `webssh2`（监听 `2222`）。
 - 本项目默认使用 `http://{dashboard_host}:2222/ssh/host/{host}` 作为跳转模板，可通过环境变量 `WEBSSH2_URL_TEMPLATE` 改掉。
 - 如果暂时没有部署 `webssh2`，可把环境变量 `WEBSSH2_ENABLED=0`，SSH 会回退到当前页面内置终端。
 
@@ -70,11 +70,31 @@ python3 -m pip install -r requirements.txt
 
 编译产物会输出到 `dist/`，脚本会自动扫描 `PATH` 和常见工具链目录中的 `gcc/g++` 及交叉编译器，并自动匹配可编译的目标。
 
+在 CI / Docker 镜像构建中，默认使用 Debian 交叉编译器包，通常会产出并打包：
+
+- `device_broadcast-x86_64-linux-gnu`
+- `device_broadcast-aarch64-linux-gnu`
+- `device_broadcast-armv7-linux-gnueabihf`
+
+如需额外的 `device_broadcast-armv7-ax620e-uclibc`，需要在 builder 环境里额外准备 AX620E uclibc 工具链（见下方下载地址）。
+
 如果只想先看当前机器发现到了哪些编译器：
 
 ```bash
 ./build.sh --list-compilers
 ```
+
+### 交叉编译器下载（可选，可补进 CI / Docker builder）
+
+`build.sh` 会自动扫描 `PATH` 以及一些常见目录来发现交叉编译器（例如 `/opt/*/bin`、`/home/axera/gcc-arm-*/bin`、`/home/axera/gcc-linaro-*/bin`、`/home/axera/arm-AX620E-linux-uclibcgnueabihf/bin`）。
+
+常用工具链下载地址（x86_64 host）：
+
+- aarch64-none-linux-gnu（glibc）：https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz
+- arm-linux-gnueabihf（glibc）：https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/arm-linux-gnueabihf/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabihf.tar.xz
+- AX620E uclibc（arm-AX620E-linux-uclibcgnueabihf）：https://github.com/AXERA-TECH/ax620q_bsp_sdk/releases/download/v2.0.0/arm-AX620E-linux-uclibcgnueabihf_V3_20240320.tgz
+
+把这些工具链解压到上面这些目录之一后再执行 `./build.sh`，即可让 `dist/` 里多出对应架构的预编译文件；CI/Docker 的 builder 阶段也可以用相同方式下载解压后再执行 `./build.sh`，从而把更多架构产物 bake 进镜像。
 
 ### 本地单独编译
 
@@ -256,7 +276,7 @@ curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
   -d '{"include_remotes":true,"tag":"site:深圳"}'
 ```
 
-如果要启用网页版 SSH，还需要额外准备一个可访问的 `webssh2` 服务；Dashboard 本身不会自动安装它，只负责跳转到 `WEBSSH2_URL_TEMPLATE` 指定的地址。
+如果你是直接运行 `python3 dashboard.py`（非 Docker），需要额外准备一个可访问的 `webssh2` 服务；如果使用本项目的 Docker 镜像，则镜像已内置并默认启动。Dashboard 侧只负责按 `WEBSSH2_URL_TEMPLATE` 生成跳转地址。
 
 网页批量更新说明：
 
@@ -273,6 +293,7 @@ curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
 
 - SSH / Telnet / sudo 密码如勾选记住，只保存在当前浏览器的本地存储中，不会在服务端落盘
 - Telnet 自动更新至少需要目标机具备 `curl / wget / busybox wget / python3 / python` 其中之一用于下载更新包
+- 如果你要走 Telnet 路径下载更新包，请确保你访问 Dashboard 的地址对目标机可达（不要用 `127.0.0.1/localhost` 打开页面，否则目标机将尝试访问它自己的 `127.0.0.1` 去下载更新包）。
 
 ### 安装 Dashboard 为常驻服务
 
