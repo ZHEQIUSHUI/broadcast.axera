@@ -36,6 +36,7 @@ jobs:
           echo "[build] linux/amd64"
           docker buildx build \
             --platform linux/amd64 \
+            --build-arg DOWNLOAD_TOOLCHAINS=1 \
             -t "${IMAGE_NAME}:${IMAGE_TAG}" \
             --output type=docker,dest=- \
             . | gzip > "${IMAGE_NAME}-${IMAGE_TAG}-linux-amd64.tar.gz"
@@ -43,6 +44,7 @@ jobs:
           echo "[build] linux/arm64"
           docker buildx build \
             --platform linux/arm64 \
+            --build-arg DOWNLOAD_TOOLCHAINS=1 \
             -t "${IMAGE_NAME}:${IMAGE_TAG}" \
             --output type=docker,dest=- \
             . | gzip > "${IMAGE_NAME}-${IMAGE_TAG}-linux-arm64.tar.gz"
