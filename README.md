@@ -70,13 +70,13 @@ python3 -m pip install -r requirements.txt
 
 编译产物会输出到 `dist/`，脚本会自动扫描 `PATH` 和常见工具链目录中的 `gcc/g++` 及交叉编译器，并自动匹配可编译的目标。
 
-在 CI / Docker 镜像构建中，默认使用 Debian 交叉编译器包，通常会产出并打包：
+在 CI / Docker 镜像构建中，会在 `dist-builder` 阶段执行一次 `./build.sh`，通常会产出并打包：
 
 - `device_broadcast-x86_64-linux-gnu`
 - `device_broadcast-aarch64-linux-gnu`
 - `device_broadcast-armv7-linux-gnueabihf`
 
-如需额外的 `device_broadcast-armv7-ax620e-uclibc`，需要在 builder 环境里额外准备 AX620E uclibc 工具链（见下方下载地址）。
+如需额外的 `device_broadcast-armv7-ax620e-uclibc`，需要在 builder 环境里额外准备 AX620E uclibc 工具链（见下方下载地址）。本仓库的 GitHub Actions Docker 打包工作流已开启 `DOWNLOAD_TOOLCHAINS=1`，会在构建时自动下载这些工具链并尝试产出该文件。
 
 如果只想先看当前机器发现到了哪些编译器：
 
@@ -95,6 +95,12 @@ python3 -m pip install -r requirements.txt
 - AX620E uclibc（arm-AX620E-linux-uclibcgnueabihf）：https://github.com/AXERA-TECH/ax620q_bsp_sdk/releases/download/v2.0.0/arm-AX620E-linux-uclibcgnueabihf_V3_20240320.tgz
 
 把这些工具链解压到上面这些目录之一后再执行 `./build.sh`，即可让 `dist/` 里多出对应架构的预编译文件；CI/Docker 的 builder 阶段也可以用相同方式下载解压后再执行 `./build.sh`，从而把更多架构产物 bake 进镜像。
+
+如果你希望 `docker build` 时自动下载这些工具链并编译（例如产出 `armv7-ax620e-uclibc`），可用：
+
+```bash
+docker build --build-arg DOWNLOAD_TOOLCHAINS=1 -t broadcast-axera-dashboard:local .
+```
 
 ### 本地单独编译
 
