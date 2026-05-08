@@ -8,6 +8,8 @@ ARG TOOLCHAIN_ARMV7_URL="https://releases.linaro.org/components/toolchain/binari
 ARG TOOLCHAIN_RISCV64_URL="https://github.com/ZHEQIUSHUI/assets/releases/download/risc-v/gcc-14.3-riscv64-unknown-linux-gnu-2.39.tar.xz"
 ARG TOOLCHAIN_AX620E_UCLIBC_URL="https://github.com/AXERA-TECH/ax620q_bsp_sdk/releases/download/v2.0.0/arm-AX620E-linux-uclibcgnueabihf_V3_20240320.tgz"
 
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
@@ -51,6 +53,8 @@ FROM node:22-slim AS webssh2-builder
 
 WORKDIR /src/webssh2
 
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -73,6 +77,8 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:${PATH}"
+
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
