@@ -163,10 +163,14 @@ docker build -t broadcast-axera-dashboard:local .
 
 ```bash
 # x86_64
-gzip -dc broadcast-axera-dashboard-*-linux-amd64.tar.gz | docker load
+docker load -i broadcast-axera-dashboard-*-linux-amd64.tar
+# 或者（下载的是 tar.gz 也可以直接 load）
+docker load -i broadcast-axera-dashboard-*-linux-amd64.tar.gz
 
 # aarch64
-gzip -dc broadcast-axera-dashboard-*-linux-arm64.tar.gz | docker load
+docker load -i broadcast-axera-dashboard-*-linux-arm64.tar
+# 或者（下载的是 tar.gz 也可以直接 load）
+docker load -i broadcast-axera-dashboard-*-linux-arm64.tar.gz
 ```
 
 运行（推荐：host 网络）：

@@ -34,25 +34,29 @@ jobs:
           fi
 
           echo "[build] linux/amd64"
+          TAR_AMD64="${IMAGE_NAME}-${IMAGE_TAG}-linux-amd64.tar"
           docker buildx build \
             --platform linux/amd64 \
             --build-arg DOWNLOAD_TOOLCHAINS=1 \
             -t "${IMAGE_NAME}:${IMAGE_TAG}" \
-            --output type=docker,dest=- \
-            . | gzip > "${IMAGE_NAME}-${IMAGE_TAG}-linux-amd64.tar.gz"
+            --output "type=docker,dest=${TAR_AMD64}" \
+            .
+          gzip -c "${TAR_AMD64}" > "${TAR_AMD64}.gz"
 
           echo "[build] linux/arm64"
+          TAR_ARM64="${IMAGE_NAME}-${IMAGE_TAG}-linux-arm64.tar"
           docker buildx build \
             --platform linux/arm64 \
             --build-arg DOWNLOAD_TOOLCHAINS=1 \
             -t "${IMAGE_NAME}:${IMAGE_TAG}" \
-            --output type=docker,dest=- \
-            . | gzip > "${IMAGE_NAME}-${IMAGE_TAG}-linux-arm64.tar.gz"
+            --output "type=docker,dest=${TAR_ARM64}" \
+            .
+          gzip -c "${TAR_ARM64}" > "${TAR_ARM64}.gz"
 
       - uses: actions/upload-artifact@v6
         with:
           name: broadcast-axera-dashboard-linux-tars
-          path: broadcast-axera-dashboard-*-linux-*.tar.gz
+          path: broadcast-axera-dashboard-*-linux-*.tar*
           if-no-files-found: error
 
       - name: Move tag "latest" to this commit
@@ -73,5 +77,5 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           makeLatest: true
-          artifacts: broadcast-axera-dashboard-latest-linux-*.tar.gz
+          artifacts: broadcast-axera-dashboard-latest-linux-*.tar*
           omitBodyDuringUpdate: true
