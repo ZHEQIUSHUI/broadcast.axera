@@ -20,7 +20,10 @@ DASHBOARD_SITE_LABEL="${DASHBOARD_SITE_LABEL:-本地(Docker)}"
 
 DOWNLOAD_TOOLCHAINS="${DOWNLOAD_TOOLCHAINS:-0}"
 
-WEBSSH2_URL_TEMPLATE="${WEBSSH2_URL_TEMPLATE:-http://{dashboard_host}:${WEBSSH2_LISTEN_PORT}/ssh/host/{host}}"
+WEBSSH2_URL_TEMPLATE="${WEBSSH2_URL_TEMPLATE:-}"
+if [[ -z "${WEBSSH2_URL_TEMPLATE}" ]]; then
+  WEBSSH2_URL_TEMPLATE="http://{dashboard_host}:${WEBSSH2_LISTEN_PORT}/ssh/host/{host}"
+fi
 
 log() {
   printf '%s\n' "$*"
