@@ -189,6 +189,12 @@ docker run --rm -it \
 ./docker/update.sh
 ```
 
+> 如果你之前安装过系统服务（`dashboard.service`），它可能会占用 `25000` 并导致 UDP `9999` 流量被分流。建议先停用系统服务再使用 Docker：
+>
+> ```bash
+> sudo systemctl disable --now dashboard.service
+> ```
+
 如果宿主机的 `2222` 端口已被占用，可改成：
 
 - `-e WEBSSH2_LISTEN_PORT=2223`
