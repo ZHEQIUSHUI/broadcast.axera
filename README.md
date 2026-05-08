@@ -183,6 +183,12 @@ docker run --rm -it \
   broadcast-axera-dashboard:local
 ```
 
+快速更新（重建镜像并重启容器）：
+
+```bash
+./docker/update.sh
+```
+
 如果宿主机的 `2222` 端口已被占用，可改成：
 
 - `-e WEBSSH2_LISTEN_PORT=2223`
