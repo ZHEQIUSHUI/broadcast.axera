@@ -5,6 +5,7 @@ WORKDIR /src
 ARG DOWNLOAD_TOOLCHAINS=0
 ARG TOOLCHAIN_AARCH64_URL="https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz"
 ARG TOOLCHAIN_ARMV7_URL="https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/arm-linux-gnueabihf/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabihf.tar.xz"
+ARG TOOLCHAIN_RISCV64_URL="https://github.com/ZHEQIUSHUI/assets/releases/download/risc-v/gcc-14.3-riscv64-unknown-linux-gnu-2.39.tar.xz"
 ARG TOOLCHAIN_AX620E_UCLIBC_URL="https://github.com/AXERA-TECH/ax620q_bsp_sdk/releases/download/v2.0.0/arm-AX620E-linux-uclibcgnueabihf_V3_20240320.tgz"
 
 RUN apt-get update \
@@ -26,6 +27,9 @@ RUN if [ "${DOWNLOAD_TOOLCHAINS}" = "1" ]; then \
         wget -O /tmp/gcc-linaro-armv7.tar.xz "${TOOLCHAIN_ARMV7_URL}"; \
         tar -C /opt -xJf /tmp/gcc-linaro-armv7.tar.xz; \
         rm -f /tmp/gcc-linaro-armv7.tar.xz; \
+        wget -O /tmp/gcc-riscv64.tar.xz "${TOOLCHAIN_RISCV64_URL}"; \
+        tar -C /opt -xJf /tmp/gcc-riscv64.tar.xz; \
+        rm -f /tmp/gcc-riscv64.tar.xz; \
         wget -O /tmp/ax620e-uclibc.tgz "${TOOLCHAIN_AX620E_UCLIBC_URL}"; \
         tar -C /opt -xzf /tmp/ax620e-uclibc.tgz; \
         rm -f /tmp/ax620e-uclibc.tgz; \

@@ -45,6 +45,7 @@ collect_search_dirs() {
     for path_entry in \
         "/home/axera/gcc-arm-"*"/bin" \
         "/home/axera/gcc-linaro-"*"/bin" \
+        "/home/axera/gcc-"*riscv*"/bin" \
         "/home/axera/arm-AX620E-linux-uclibcgnueabihf/bin" \
         "/opt/"*"/bin"
     do
@@ -228,6 +229,8 @@ main() {
         aarch64-none-linux-gnu-g++ aarch64-linux-gnu-g++ aarch64-none-linux-gnu-gcc aarch64-linux-gnu-gcc
     build_target "armv7 glibc" "$OUT_DIR/${APP_NAME}-armv7-linux-gnueabihf" '^arm([-_].*)?linux.*gnueabihf-(g\+\+|gcc)$' \
         arm-linux-gnueabihf-g++ arm-linux-gnueabihf-gcc
+    build_target "riscv64 glibc" "$OUT_DIR/${APP_NAME}-riscv64-linux-gnu" '^riscv64[-_].*linux.*gnu-(g\+\+|gcc)$' \
+        riscv64-unknown-linux-gnu-g++ riscv64-unknown-linux-gnu-gcc riscv64-linux-gnu-g++ riscv64-linux-gnu-gcc
     build_target "ax620e uclibc" "$OUT_DIR/${APP_NAME}-armv7-ax620e-uclibc" '^arm[-_].*[Aa][Xx]620[Ee].*uclibc.*-(g\+\+|gcc)$' \
         arm-AX620E-linux-uclibcgnueabihf-g++ arm-AX620E-linux-uclibcgnueabihf-gcc
 

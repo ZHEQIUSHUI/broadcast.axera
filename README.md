@@ -92,6 +92,7 @@ python3 -m pip install -r requirements.txt
 
 - aarch64-none-linux-gnu（glibc）：https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz
 - arm-linux-gnueabihf（glibc）：https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/arm-linux-gnueabihf/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabihf.tar.xz
+- riscv64-unknown-linux-gnu（glibc）：https://github.com/ZHEQIUSHUI/assets/releases/download/risc-v/gcc-14.3-riscv64-unknown-linux-gnu-2.39.tar.xz
 - AX620E uclibc（arm-AX620E-linux-uclibcgnueabihf）：https://github.com/AXERA-TECH/ax620q_bsp_sdk/releases/download/v2.0.0/arm-AX620E-linux-uclibcgnueabihf_V3_20240320.tgz
 
 把这些工具链解压到上面这些目录之一后再执行 `./build.sh`，即可让 `dist/` 里多出对应架构的预编译文件；CI/Docker 的 builder 阶段也可以用相同方式下载解压后再执行 `./build.sh`，从而把更多架构产物 bake 进镜像。
