@@ -1751,6 +1751,256 @@
                 flex-direction: column;
             }
         }
+
+        /* ===========================================================
+           Layout v2 overhaul — compress chrome, redesign device card
+        ============================================================ */
+
+        /* ---- Hero compression ---- */
+        .hero {
+            grid-template-columns: minmax(260px, 1fr) 1.7fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .hero-card {
+            padding: 16px 20px 14px;
+            display: grid;
+            grid-template-rows: auto auto auto;
+            align-content: start;
+            gap: 4px;
+        }
+        .hero-card .eyebrow { margin-bottom: 4px; }
+        .hero-card h1 {
+            font-size: clamp(20px, 1.7vw, 26px);
+            margin: 0 0 6px;
+            line-height: 1.1;
+        }
+        .hero-copy { display: none; }
+        .hero-meta { margin-top: 4px; gap: 6px; }
+        .hero-meta .pill { padding: 4px 10px; font-size: 11px; }
+
+        /* ---- Summary grid: 4 narrow columns ---- */
+        .summary-grid {
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            align-content: start;
+        }
+        .summary-card { padding: 10px 12px 8px; }
+        .summary-card h3 { margin-bottom: 4px; font-size: 10px; }
+        .summary-value { font-size: 22px; }
+        .summary-note { font-size: 11px; margin-top: 3px; }
+        .summary-card::after { width: 3px; }
+
+        /* ---- Hide redundant type-strip (the model filter already shows the same data) ---- */
+        .type-strip { display: none !important; }
+
+        /* ---- Single-site filter section is meaningless (only 本地) — JS toggles .is-single ---- */
+        .filter-panel.is-single { display: none !important; }
+
+        /* ---- Filter bars: tighter ---- */
+        .filter-panel { margin-bottom: 8px; gap: 6px; }
+        .filter-strip { gap: 5px; }
+        .filter-chip { padding: 5px 11px; font-size: 12px; }
+
+        /* ---- Batch bar tighter ---- */
+        .batch-bar { padding: 8px 12px; margin-bottom: 12px; }
+
+        /* ---- Sticky toolbar slightly slimmer ---- */
+        .toolbar { padding: 8px 12px; }
+
+        /* ---- Devices grid v2: clickable cards with foot rail ---- */
+        .device-card {
+            cursor: pointer;
+            padding: 12px 14px 10px;
+            gap: 10px;
+            outline: none;
+        }
+        .device-card:focus-visible {
+            box-shadow: 0 0 0 2px var(--accent), var(--shadow-2);
+        }
+        .device-card.is-selected {
+            border-color: var(--accent);
+            background: linear-gradient(180deg, rgba(15, 118, 110, 0.05), var(--bg-panel));
+        }
+        .device-card.has-new { padding-top: 14px; }
+        .device-card .new-badge {
+            top: 10px; left: 12px;
+            padding: 3px 8px;
+            font-size: 10px;
+        }
+
+        .device-head {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: start;
+        }
+
+        .device-head .device-title h2 {
+            font-size: 17px;
+            line-height: 1.15;
+            margin: 0 0 3px;
+        }
+
+        .device-head .device-subtitle {
+            color: var(--muted);
+            font-size: 12px;
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+            line-height: 1.35;
+        }
+
+        .device-head .device-subtitle .status-dot {
+            display: inline-block;
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+            margin-right: 4px;
+            animation: pulse 2.2s ease-in-out infinite;
+        }
+        .device-head .device-subtitle .status-dot.remote {
+            background: var(--info);
+            box-shadow: 0 0 0 3px var(--info-soft);
+            animation: none;
+        }
+
+        .device-head .device-subtitle .meta-sep {
+            color: var(--line-strong);
+            margin: 0 1px;
+        }
+
+        /* Selection target as a square check tile (much bigger hit area) */
+        .device-card .device-select {
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            border-radius: 8px;
+            border: 1px solid var(--line);
+            background: var(--bg-panel-strong);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background var(--transition), border-color var(--transition);
+        }
+        .device-card .device-select input {
+            width: 14px;
+            height: 14px;
+            margin: 0;
+            accent-color: var(--accent);
+        }
+        .device-card .device-select:hover {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+        .device-card.is-selected .device-select {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+        .device-card.is-selected .device-select input {
+            accent-color: #fff;
+        }
+        .device-card .device-select.readonly {
+            cursor: not-allowed;
+            opacity: 0.6;
+            font-size: 10px;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        /* Foot rail: secondary meta + actions */
+        .device-foot {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            padding-top: 8px;
+            border-top: 1px dashed var(--line-soft);
+        }
+
+        .device-foot-meta {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 4px 12px;
+            font-size: 11.5px;
+            color: var(--muted);
+            align-items: baseline;
+        }
+        .device-foot-meta strong {
+            color: var(--ink);
+            font-weight: 600;
+        }
+        .device-foot-meta .saved-badge { color: var(--accent); font-weight: 600; }
+
+        .device-foot-actions {
+            display: inline-flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        /* All card-foot buttons share identical box: same height, same vertical padding,
+           consistent rendering whether they hold a label, an icon, or both. */
+        .device-foot-actions .btn-sm {
+            box-sizing: border-box;
+            min-height: 30px;
+            height: 30px;
+            padding: 0 12px;
+            font-size: 12px;
+            border-radius: 8px;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+
+        .device-foot-actions .icon-btn {
+            min-width: 30px;
+            padding: 0 8px;
+            font-family: "IBM Plex Sans", sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .device-foot-actions .icon-btn[disabled],
+        .device-foot-actions .btn-sm[disabled] {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Compact density tightens further */
+        .devices-grid.compact .device-card {
+            padding: 10px 12px 8px;
+            gap: 8px;
+        }
+        .devices-grid.compact .device-title h2 { font-size: 16px; }
+        .devices-grid.compact .device-subtitle { font-size: 11.5px; }
+        .devices-grid.compact .device-foot { padding-top: 6px; }
+        .devices-grid.compact .metric-value { font-size: 15px; }
+        .devices-grid.compact .device-foot-meta { font-size: 11px; }
+
+        /* Card hover bring foot actions forward visually */
+        .device-card:hover .device-foot-actions .btn-ghost {
+            opacity: 1;
+        }
+        .device-foot-actions .btn-ghost {
+            opacity: 0.78;
+            transition: opacity var(--transition);
+        }
+
+        @media (max-width: 1080px) {
+            .hero { grid-template-columns: 1fr; }
+            .summary-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        @media (max-width: 760px) {
+            .summary-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        /* ========================================================== */
     </style>
 </head>
 <body>
@@ -4886,6 +5136,209 @@
             ui.search.focus();
             ui.search.select();
         });
+
+        /* =========================================================
+           Layout v2 overhaul — card redesign + interaction
+        ========================================================== */
+        const cardJsState = {
+            lastKey: null,
+            lastIdx: -1,
+            displayed: [],
+        };
+
+        function v2EscapeAttr(value) {
+            return escapeHtml(String(value || '')).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+
+        function v2RenderMetaSubtitle(device) {
+            const isLocal = (device.source_kind || 'local') === 'local';
+            const parts = [
+                escapeHtml(device.device_type || ''),
+                escapeHtml(device.os_name || ''),
+                escapeHtml(device.ip || ''),
+            ].filter(Boolean);
+            const sub = parts.join('<span class="meta-sep">·</span>');
+            return `
+                <span class="status-dot ${isLocal ? '' : 'remote'}" aria-hidden="true"></span>
+                ${sub}
+                ${device.hasLocalCredential ? '<span class="meta-sep">·</span><span class="saved-badge">本机存有 Telnet</span>' : ''}
+            `;
+        }
+
+        function v2RenderFootMeta(device) {
+            const parts = [];
+            parts.push(`用户 <strong>${escapeHtml(device.default_user || 'N/A')}</strong>`);
+            parts.push(`架构 <strong>${escapeHtml(device.arch || device.machine || 'N/A')}</strong>`);
+            parts.push(`运行 <strong>${escapeHtml(formatUptime(device.uptime_seconds))}</strong>`);
+            if (device.is_ax && device.chip_type) {
+                parts.push(`AX <strong>${escapeHtml(device.chip_type)}</strong>`);
+            }
+            if (device.is_ax && device.version) {
+                parts.push(`版本 <strong>${escapeHtml(device.version)}</strong>`);
+            }
+            return parts.map((p) => `<span>${p}</span>`).join('');
+        }
+
+        function v2RenderActions(device, deviceKey) {
+            const isLocal = (device.source_kind || 'local') === 'local';
+            const keyAttr = v2EscapeAttr(deviceKey);
+            const ipAttr = v2EscapeAttr(device.ip || '');
+            const primary = isLocal
+                ? `<button class="btn-primary btn-sm" data-card-action onclick="event.stopPropagation(); openTerminal('${keyAttr}')">终端</button>`
+                : `<button class="btn-secondary btn-sm" data-card-action onclick="event.stopPropagation(); openRemoteDashboard('${keyAttr}')">远程</button>`;
+            const copyBtn = `<button class="btn-secondary btn-sm icon-btn" data-card-action title="复制 IP" aria-label="复制 IP" onclick="event.stopPropagation(); copyText('${ipAttr}')">⎘</button>`;
+            const clearBtn = device.hasLocalCredential
+                ? `<button class="btn-ghost btn-sm icon-btn" data-card-action title="清除本机 Telnet 密码" aria-label="清除本机 Telnet 密码" onclick="event.stopPropagation(); clearPassword('${keyAttr}')">×</button>`
+                : '';
+            return `${primary}${copyBtn}${clearBtn}`;
+        }
+
+        renderDevice = function v2RenderDevice(device) {
+            const deviceKey = device.device_key || device.ip;
+            const isLocal = (device.source_kind || 'local') === 'local';
+            const selected = state.selectedDevices.has(deviceKey);
+            const isNew = isDeviceNew(device);
+            const keyAttr = v2EscapeAttr(deviceKey);
+            const selectControl = isLocal
+                ? `<label class="device-select" data-card-action title="勾选以参与批量更新" onclick="event.stopPropagation();">
+                       <input type="checkbox" ${selected ? 'checked' : ''} data-card-toggle data-key="${keyAttr}" onchange="toggleDeviceSelection('${keyAttr}', this.checked)">
+                   </label>`
+                : '<span class="device-select readonly" title="远程设备只读">只读</span>';
+
+            return `
+                <article class="device-card${selected ? ' is-selected' : ''}${isNew ? ' has-new' : ''}"
+                         data-key="${keyAttr}"
+                         data-source="${isLocal ? 'local' : 'remote'}"
+                         tabindex="0"
+                         role="button"
+                         aria-label="${escapeHtml(device.display_name || device.ip || '')} 详情">
+                    ${isNew ? '<div class="new-badge">NEW</div>' : ''}
+                    <div class="device-head">
+                        <div class="device-title">
+                            <h2>${escapeHtml(device.display_name || device.ip || 'Unknown')}</h2>
+                            <div class="device-subtitle">${v2RenderMetaSubtitle(device)}</div>
+                            ${device.custom_note ? `<div class="device-note-preview">${escapeHtml(device.custom_note)}</div>` : ''}
+                        </div>
+                        ${selectControl}
+                    </div>
+                    <div class="metrics-grid">${renderMetricSet(device)}</div>
+                    <div class="device-foot">
+                        <div class="device-foot-meta">${v2RenderFootMeta(device)}</div>
+                        <div class="device-foot-actions">${v2RenderActions(device, deviceKey)}</div>
+                    </div>
+                </article>
+            `;
+        };
+
+        // After patchedRenderDevices runs, capture displayed list for shift-range
+        const __v2OrigRenderDevices = renderDevices;
+        renderDevices = function v2RenderDevicesWrap() {
+            const baseVisible = (typeof getVisibleDevices === 'function') ? getVisibleDevices() : state.devices;
+            const displayed = applyDisplayPipeline(baseVisible);
+            cardJsState.displayed = displayed;
+            __v2OrigRenderDevices();
+            // Annotate with idx for range-select math
+            const cards = elements.devicesGrid.querySelectorAll('.device-card');
+            displayed.forEach((device, idx) => {
+                const card = cards[idx];
+                if (!card) return;
+                card.dataset.idx = String(idx);
+            });
+        };
+
+        // Whole-card click → detail (skip clicks on actions / checkbox / labels)
+        elements.devicesGrid.addEventListener('click', (event) => {
+            const card = event.target.closest('.device-card');
+            if (!card) return;
+            if (event.target.closest('[data-card-action], button, input, label, a')) return;
+            const key = card.dataset.key;
+            if (!key) return;
+            openDeviceDetail(key);
+        });
+
+        // Keyboard: Enter / Space on focused card → detail
+        elements.devicesGrid.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            const card = event.target.closest && event.target.closest('.device-card');
+            if (!card) return;
+            if (event.target !== card) return;
+            event.preventDefault();
+            const key = card.dataset.key;
+            if (key) openDeviceDetail(key);
+        });
+
+        // Shift+click on card checkbox: range select all local devices between last and current
+        elements.devicesGrid.addEventListener('click', (event) => {
+            const cb = event.target.closest('input[data-card-toggle]');
+            if (!cb) return;
+            const card = event.target.closest('.device-card');
+            if (!card) return;
+            const idx = Number(card.dataset.idx);
+            const key = card.dataset.key;
+            if (event.shiftKey && cardJsState.lastIdx >= 0 && Number.isFinite(idx)) {
+                event.preventDefault();
+                const lo = Math.min(cardJsState.lastIdx, idx);
+                const hi = Math.max(cardJsState.lastIdx, idx);
+                let changed = false;
+                for (let i = lo; i <= hi; i++) {
+                    const d = cardJsState.displayed[i];
+                    if (!d) continue;
+                    if ((d.source_kind || 'local') !== 'local') continue;
+                    const k = d.device_key || d.ip;
+                    if (!k) continue;
+                    if (!state.selectedDevices.has(k)) {
+                        state.selectedDevices.add(k);
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    renderDevices();
+                    syncSelectedCount();
+                    if (elements.updateModal.classList.contains('open')) {
+                        refreshUpdateSelectionPreview();
+                    }
+                    showToast(`已选 ${hi - lo + 1} 台`);
+                }
+                cb.checked = state.selectedDevices.has(key);
+            }
+            cardJsState.lastIdx = Number.isFinite(idx) ? idx : cardJsState.lastIdx;
+            cardJsState.lastKey = key || cardJsState.lastKey;
+        }, true);
+
+        // Ctrl/Cmd+A → select all visible local devices
+        document.addEventListener('keydown', (event) => {
+            if (!(event.ctrlKey || event.metaKey)) return;
+            if (event.key !== 'a' && event.key !== 'A') return;
+            const tag = (event.target && event.target.tagName) || '';
+            if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+            if (event.target && event.target.isContentEditable) return;
+            const anyModalOpen = ['detail-modal', 'update-modal', 'remote-modal', 'terminal-modal']
+                .some((id) => {
+                    const el = document.getElementById(id);
+                    return el && el.classList.contains('open');
+                });
+            if (anyModalOpen) return;
+            event.preventDefault();
+            selectAllDevices();
+            const count = state.selectedDevices.size;
+            showToast(count ? `已全选 ${count} 台可见设备` : '当前没有可选的本地设备');
+        });
+
+        // Hide the site filter section entirely when there's only one site (i.e., only "本地")
+        const __v2OrigRenderSiteFilters = renderSiteFilters;
+        renderSiteFilters = function v2RenderSiteFilters() {
+            __v2OrigRenderSiteFilters();
+            const strip = elements.siteStrip;
+            if (!strip) return;
+            const panel = strip.closest('.filter-panel');
+            if (!panel) return;
+            // The site list always contains "全部" plus per-site entries. Hide if only 全部 + 1 site.
+            const buttons = strip.querySelectorAll('.filter-chip');
+            panel.classList.toggle('is-single', buttons.length <= 2);
+        };
+
+        /* ====== /Layout v2 overhaul ====== */
+
         /* ====== /UI enhancements ====== */
 
         syncSelectedCount();
