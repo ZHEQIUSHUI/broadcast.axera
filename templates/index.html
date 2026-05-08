@@ -2267,6 +2267,498 @@
             }
             .update-actions-buttons button { flex: 1 1 auto; min-width: 0; }
         }
+
+        /* ===================================================
+           Remote modal v2 — list + form + sticky save
+        ==================================================== */
+        .remote-shell-v2 {
+            width: min(900px, 100%);
+        }
+
+        .remote-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .remote-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 14px;
+            align-items: center;
+            padding: 12px 14px;
+            border-radius: var(--r-md);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+        .remote-row:hover {
+            border-color: var(--line-strong);
+            box-shadow: var(--shadow-1);
+        }
+        .remote-row.is-disabled {
+            opacity: 0.55;
+        }
+
+        .remote-row-info {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .remote-row-label {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--ink);
+            overflow-wrap: anywhere;
+        }
+
+        .remote-row-origin {
+            font: 12px/1.4 "IBM Plex Mono", monospace;
+            color: var(--accent);
+            background: var(--accent-soft);
+            padding: 2px 8px;
+            border-radius: var(--r-pill);
+            width: fit-content;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+        }
+
+        .remote-row-note {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        .remote-row-tags {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            margin-top: 2px;
+        }
+
+        .remote-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: var(--r-pill);
+            background: rgba(20, 30, 40, 0.05);
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.2;
+            border: 1px solid transparent;
+        }
+        .remote-tag strong {
+            color: var(--ink);
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .remote-tag-primary {
+            background: var(--accent-soft);
+            color: var(--accent);
+            border-color: var(--accent-tint);
+        }
+        .remote-tag-primary strong {
+            color: var(--accent);
+        }
+        .remote-tag-muted {
+            background: rgba(20, 30, 40, 0.04);
+            color: var(--muted-soft);
+            font-style: italic;
+        }
+
+        .remote-row-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            flex-shrink: 0;
+        }
+
+        .remote-row-actions .opt-check {
+            margin-right: 4px;
+            font-size: 12px;
+        }
+
+        .remote-row-actions button {
+            min-height: 32px;
+            height: 32px;
+            padding: 0 12px;
+            font-size: 12px;
+            border-radius: 8px;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .remote-empty {
+            padding: 28px 20px;
+            border: 1px dashed var(--line-strong);
+            background: rgba(255, 252, 245, 0.6);
+            border-radius: var(--r-md);
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .remote-empty strong {
+            display: block;
+            color: var(--ink);
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .remote-form {
+            display: grid;
+            gap: 10px;
+        }
+        .remote-form label {
+            display: grid;
+            gap: 5px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .remote-form input,
+        .remote-form textarea {
+            width: 100%;
+            padding: 9px 11px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--line);
+            background: var(--bg-input);
+            color: var(--ink);
+            font-size: 13px;
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+        .remote-form input:focus,
+        .remote-form textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: var(--focus-ring);
+        }
+        .remote-form-note textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        /* ===================================================
+           Mobile-first responsiveness — 760 / 480 breakpoints
+        ==================================================== */
+        @media (max-width: 760px) {
+            .shell {
+                width: min(calc(100vw - 12px), 1560px);
+                padding: 14px 0 28px;
+            }
+
+            /* Hero: stack everything */
+            .hero {
+                grid-template-columns: 1fr;
+                gap: 10px;
+                margin-bottom: 12px;
+            }
+            .hero-card {
+                padding: 14px 16px 12px;
+            }
+            .hero-card h1 {
+                font-size: 22px;
+            }
+            .hero-meta { gap: 5px; }
+            .hero-meta .pill { padding: 4px 9px; font-size: 11px; }
+
+            /* Summary 2x2 with shorter values */
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+            .summary-card {
+                padding: 10px 12px 8px;
+            }
+            .summary-value { font-size: 22px; }
+            .summary-note { font-size: 11px; }
+
+            /* Toolbar: stack vertically, search full-width */
+            .toolbar {
+                position: static;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+                padding: 8px 10px;
+            }
+            .toolbar-search {
+                min-width: 0;
+                flex: 1 1 auto;
+            }
+            .toolbar-search kbd { display: none; }
+            .toolbar-controls {
+                justify-content: flex-start;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
+            .toolbar-select { flex: 1 1 140px; }
+            .density-toggle { flex: 0 0 auto; }
+            #btn-open-remotes { flex: 1 1 100px; }
+
+            /* Filter chips: horizontal scroll instead of wrap */
+            .filter-strip {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 4px;
+                margin: 0 -2px;
+                padding-left: 2px;
+                padding-right: 2px;
+                scrollbar-width: thin;
+            }
+            .filter-strip::-webkit-scrollbar { height: 4px; }
+            .filter-chip {
+                flex-shrink: 0;
+                min-height: 32px;
+            }
+            .filter-panel { gap: 6px; }
+
+            /* Batch bar: stack info above buttons */
+            .batch-bar {
+                padding: 8px 10px;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .batch-bar .hero-meta { gap: 6px; }
+            .batch-actions {
+                justify-content: space-between;
+                gap: 6px;
+            }
+            .batch-actions button {
+                flex: 1 1 auto;
+                min-height: 36px;
+                font-size: 12px;
+                padding: 8px 10px;
+            }
+
+            /* Devices grid: single column */
+            .devices-grid,
+            .devices-grid.compact {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            /* Bigger touch targets on cards */
+            .device-card .device-select {
+                width: 36px;
+                height: 36px;
+            }
+            .device-foot {
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .device-foot-meta { font-size: 11px; }
+            .device-foot-actions { width: 100%; justify-content: flex-end; }
+            .device-foot-actions .btn-sm {
+                min-height: 34px;
+                height: 34px;
+                padding: 0 14px;
+                font-size: 12px;
+            }
+            .device-foot-actions .icon-btn {
+                min-width: 34px;
+                padding: 0 10px;
+            }
+
+            /* Modals: nearly full screen, smaller padding */
+            .detail-modal,
+            .update-modal,
+            .terminal-modal {
+                padding: 6px;
+            }
+            .detail-shell,
+            .update-shell {
+                width: 100%;
+                max-width: 100%;
+                max-height: calc(100vh - 12px);
+                border-radius: 16px;
+            }
+            .terminal-shell {
+                width: 100%;
+                height: calc(100vh - 12px);
+                border-radius: 16px;
+            }
+            .detail-top,
+            .update-top {
+                padding: 14px 16px 10px;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .detail-top h3,
+            .update-top h3 { font-size: 19px; }
+            .detail-top button,
+            .update-top button#btn-update-close,
+            .update-top button#btn-detail-close,
+            .update-top button#btn-remote-close {
+                align-self: flex-end;
+            }
+            .detail-summary,
+            .detail-editor {
+                margin: 0 16px 12px;
+            }
+            .detail-body { padding: 0 16px 16px; }
+            .detail-grid { grid-template-columns: 1fr; }
+            .detail-editor-grid { grid-template-columns: 1fr; }
+
+            /* Update modal v2 mobile */
+            .update-body-v2 {
+                padding: 14px 14px 14px;
+                gap: 12px;
+            }
+            .update-section {
+                padding: 12px 12px 14px;
+                gap: 10px;
+            }
+            .update-section-head {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+            .update-section-hint {
+                text-align: left;
+                flex: 1 1 100%;
+            }
+            .update-grid-2,
+            .update-grid-3,
+            .update-options-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            .update-auth-grid .auth-block {
+                padding: 10px;
+            }
+            .update-options-row .opt-toggles {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+            .update-actions-bar {
+                padding: 10px 14px;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .update-actions-hint {
+                font-size: 11.5px;
+            }
+            .update-actions-buttons {
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .update-actions-buttons button {
+                flex: 1 1 auto;
+                min-width: 0;
+                min-height: 38px;
+            }
+
+            /* Remote rows stack actions below info */
+            .remote-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+            .remote-row-actions {
+                justify-content: flex-end;
+                width: 100%;
+            }
+            .remote-row-actions button { flex: 0 1 auto; }
+
+            /* Terminal modal mobile */
+            .terminal-top {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+                padding: 12px 14px;
+            }
+            .terminal-toolbar {
+                justify-content: flex-end;
+                gap: 6px;
+            }
+            .terminal-toolbar button {
+                flex: 1 1 auto;
+                min-height: 34px;
+            }
+            .terminal-connect {
+                padding: 12px 14px;
+            }
+            .terminal-connect-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+            .terminal-auth-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .terminal-auth-grid label:nth-child(1) {
+                grid-column: 1 / -1;
+            }
+            .terminal-auth-grid .terminal-connect-actions {
+                grid-column: 1 / -1;
+                justify-content: space-between;
+            }
+            .terminal-output {
+                font-size: 12px;
+                padding: 12px 14px 16px;
+            }
+            .terminal-launcher { padding: 18px 14px 20px; }
+
+            /* Toast safer position on mobile */
+            .toast {
+                bottom: 16px;
+                font-size: 12px;
+                padding: 9px 14px;
+                max-width: calc(100vw - 32px);
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .shell {
+                width: 100%;
+                padding: 12px 8px 20px;
+            }
+            .hero-card h1 { font-size: 20px; }
+            .hero-card .hero-meta { gap: 4px; }
+            .summary-grid { grid-template-columns: 1fr 1fr; }
+            .summary-card { padding: 8px 10px 6px; }
+            .summary-value { font-size: 20px; }
+
+            /* Cards: tighter still */
+            .device-card { padding: 12px 12px 10px; }
+            .device-title h2 { font-size: 16px; }
+            .device-subtitle { font-size: 11.5px; }
+            .metrics-grid { grid-template-columns: 1fr; }
+            .metric { padding: 9px 10px; }
+            .metric-value { font-size: 16px; }
+
+            /* Modal: take everything */
+            .detail-modal,
+            .update-modal,
+            .terminal-modal { padding: 4px; }
+            .detail-shell,
+            .update-shell {
+                max-height: calc(100vh - 8px);
+                border-radius: 12px;
+            }
+            .terminal-shell {
+                height: calc(100vh - 8px);
+                border-radius: 12px;
+            }
+            .detail-top,
+            .update-top { padding: 12px 14px 10px; }
+            .detail-summary,
+            .detail-editor { margin: 0 14px 10px; }
+            .detail-body { padding: 0 14px 14px; }
+            .update-body-v2 { padding: 12px 12px 12px; }
+            .update-section { padding: 10px 10px 12px; }
+            .update-actions-bar { padding: 10px 12px; }
+        }
     </style>
 </head>
 <body>
@@ -2593,7 +3085,7 @@
     </div>
 
     <div class="update-modal" id="remote-modal" role="dialog" aria-modal="true" aria-labelledby="remote-heading">
-        <div class="update-shell">
+        <div class="update-shell update-shell-v2 remote-shell-v2">
             <div class="update-top">
                 <div>
                     <h3 id="remote-heading">远程 Dashboard</h3>
@@ -2601,16 +3093,22 @@
                 </div>
                 <button class="btn-secondary" id="btn-remote-close" type="button">关闭</button>
             </div>
-            <div class="update-body">
-                <div class="update-grid">
-                    <div class="update-card">
+            <div class="update-body update-body-v2">
+                <section class="update-section">
+                    <header class="update-section-head">
                         <h4>已添加</h4>
-                        <div class="remote-list" id="remote-list"></div>
-                        <div class="update-note">远程面板需要升级到包含 `/api/devices/query` 的版本；否则会回退到 `/api/devices` 拉取（仅基础信息）。</div>
-                    </div>
-                    <div class="update-card">
+                        <span class="update-section-hint">远程面板需要包含 <code>/api/devices/query</code>，否则会回退到 <code>/api/devices</code>（仅基础信息）。</span>
+                    </header>
+                    <div class="remote-list" id="remote-list"></div>
+                </section>
+
+                <section class="update-section">
+                    <header class="update-section-head">
                         <h4>添加 / 修改</h4>
-                        <div class="update-form-grid">
+                        <span class="update-section-hint">保存后会自动刷新设备列表，位置筛选中会出现对应标签。</span>
+                    </header>
+                    <div class="remote-form">
+                        <div class="update-grid-2">
                             <label>
                                 服务器（IP:端口）
                                 <input id="remote-origin" placeholder="10.126.35.10:25000 或 http://10.126.35.10:25000">
@@ -2620,20 +3118,21 @@
                                 <input id="remote-label" placeholder="比如：深圳办公室">
                             </label>
                         </div>
-                        <label>
+                        <label class="remote-form-note">
                             备注
                             <textarea id="remote-note" placeholder="比如：AX650 板子 / 产线 A 区"></textarea>
                         </label>
-                        <div class="update-inline">
-                            <label class="remember">
-                                <input id="remote-enabled" type="checkbox" checked>
-                                启用
-                            </label>
-                            <button class="btn-primary" id="btn-remote-save" type="button">保存</button>
-                            <button class="btn-secondary" id="btn-remote-reset" type="button">清空</button>
-                        </div>
-                        <div class="update-note">保存后会自动刷新设备列表，位置筛选中会出现对应标签。</div>
                     </div>
+                </section>
+            </div>
+            <div class="update-actions-bar">
+                <label class="opt-check">
+                    <input id="remote-enabled" type="checkbox" checked>
+                    <span>启用此远程面板</span>
+                </label>
+                <div class="update-actions-buttons">
+                    <button class="btn-secondary" id="btn-remote-reset" type="button">清空</button>
+                    <button class="btn-primary" id="btn-remote-save" type="button">保存</button>
                 </div>
             </div>
         </div>
@@ -5639,6 +6138,115 @@
             const buttons = strip.querySelectorAll('.filter-chip');
             panel.classList.toggle('is-single', buttons.length <= 2);
         };
+
+        // Compute per-remote device stats by walking state.devices
+        function computeRemoteStats() {
+            const stats = {};
+            (state.remotes || []).forEach((remote) => {
+                stats[remote.id] = { total: 0, ax: 0, x86: 0, rpi: 0, other: 0 };
+            });
+            (state.devices || []).forEach((device) => {
+                if (device.source_kind !== 'remote') return;
+                const stat = stats[device.source_id];
+                if (!stat) return;
+                stat.total += 1;
+                if (device.is_ax) stat.ax += 1;
+                else if (device.is_raspberry_pi) stat.rpi += 1;
+                else if (device.device_kind === 'x86') stat.x86 += 1;
+                else stat.other += 1;
+            });
+            return stats;
+        }
+
+        function renderRemoteStatsBlock(stat, enabled) {
+            if (!enabled) {
+                return '<div class="remote-row-tags"><span class="remote-tag remote-tag-muted">未启用</span></div>';
+            }
+            if (!stat || stat.total === 0) {
+                return '<div class="remote-row-tags"><span class="remote-tag remote-tag-muted">暂无在线设备</span></div>';
+            }
+            const parts = [
+                `<span class="remote-tag remote-tag-primary">设备 <strong>${stat.total}</strong></span>`,
+            ];
+            if (stat.ax > 0)    parts.push(`<span class="remote-tag">AX <strong>${stat.ax}</strong></span>`);
+            if (stat.x86 > 0)   parts.push(`<span class="remote-tag">x86 <strong>${stat.x86}</strong></span>`);
+            if (stat.rpi > 0)   parts.push(`<span class="remote-tag">树莓派 <strong>${stat.rpi}</strong></span>`);
+            if (stat.other > 0) parts.push(`<span class="remote-tag">其他 <strong>${stat.other}</strong></span>`);
+            return `<div class="remote-row-tags">${parts.join('')}</div>`;
+        }
+
+        // Remote modal v2: stack info vertically per row, proper empty state, delegated actions
+        renderRemotes = function v2RenderRemotes() {
+            const remotes = state.remotes || [];
+            if (!remotes.length) {
+                elements.remoteList.innerHTML = `
+                    <div class="remote-empty">
+                        <strong>暂无远程面板</strong>
+                        可在下方填写其他办公室 Dashboard 地址，把它们的设备聚合到当前页面。
+                    </div>
+                `;
+                return;
+            }
+
+            const stats = computeRemoteStats();
+
+            elements.remoteList.innerHTML = remotes.map((remote) => {
+                const id = escapeHtml(remote.id || '');
+                const enabled = !!remote.enabled;
+                const stat = stats[remote.id];
+                const note = remote.note
+                    ? `<div class="remote-row-note">${escapeHtml(remote.note)}</div>`
+                    : '';
+                return `
+                    <div class="remote-row${enabled ? '' : ' is-disabled'}" data-remote-id="${id}">
+                        <div class="remote-row-info">
+                            <div class="remote-row-label">${escapeHtml(remote.label || '远程')}</div>
+                            <code class="remote-row-origin">${escapeHtml(remote.origin || '')}</code>
+                            ${renderRemoteStatsBlock(stat, enabled)}
+                            ${note}
+                        </div>
+                        <div class="remote-row-actions">
+                            <label class="opt-check" title="启用 / 禁用此远程面板">
+                                <input type="checkbox" ${enabled ? 'checked' : ''} data-remote-toggle aria-label="启用">
+                                <span>${enabled ? '已启用' : '禁用'}</span>
+                            </label>
+                            <button class="btn-secondary" data-remote-action="edit" type="button">编辑</button>
+                            <button class="btn-danger" data-remote-action="delete" type="button">删除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        };
+
+        // Refresh the remote panel list whenever device data changes (so counts stay live)
+        const __v2OrigRefreshDevices = refreshDevices;
+        refreshDevices = async function v2RefreshDevices() {
+            await __v2OrigRefreshDevices();
+            if (elements.remoteModal && elements.remoteModal.classList.contains('open')) {
+                renderRemotes();
+            }
+        };
+
+        // Delegated handlers for remote rows (replaces inline onclick / onchange)
+        elements.remoteList.addEventListener('click', (event) => {
+            const btn = event.target.closest('[data-remote-action]');
+            if (!btn) return;
+            const row = btn.closest('.remote-row');
+            if (!row) return;
+            const id = row.dataset.remoteId;
+            if (!id) return;
+            if (btn.dataset.remoteAction === 'edit') editRemote(id);
+            else if (btn.dataset.remoteAction === 'delete') deleteRemote(id);
+        });
+        elements.remoteList.addEventListener('change', (event) => {
+            const cb = event.target.closest('input[data-remote-toggle]');
+            if (!cb) return;
+            const row = cb.closest('.remote-row');
+            if (!row) return;
+            const id = row.dataset.remoteId;
+            if (!id) return;
+            setRemoteEnabled(id, cb.checked);
+        });
 
         /* ====== /Layout v2 overhaul ====== */
 
