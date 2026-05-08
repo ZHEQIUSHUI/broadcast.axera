@@ -5,73 +5,133 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Broadcast Device Dashboard</title>
     <style>
+        /* ===================================================
+           Design tokens
+        ==================================================== */
         :root {
-            --bg: #efebe2;
-            --panel: rgba(255, 251, 244, 0.94);
-            --panel-strong: #fffaf2;
-            --ink: #1d2730;
-            --muted: #60707c;
-            --line: rgba(29, 39, 48, 0.12);
+            /* Cream + teal palette */
+            --bg-canvas-1: #f8f3e8;
+            --bg-canvas-2: #ece4d4;
+            --bg-tint-a: rgba(15, 118, 110, 0.10);
+            --bg-tint-b: rgba(195, 122, 34, 0.08);
+
+            --bg-panel: rgba(255, 252, 245, 0.96);
+            --bg-panel-strong: #fffbf2;
+            --bg-panel-soft: rgba(255, 252, 245, 0.74);
+            --bg-input: rgba(255, 255, 255, 0.94);
+            --bg-overlay: rgba(16, 22, 26, 0.42);
+
+            --ink: #1a232b;
+            --ink-soft: #344450;
+            --muted: #5b6c79;
+            --muted-soft: #8a96a0;
+
+            --line: rgba(20, 30, 40, 0.10);
+            --line-strong: rgba(20, 30, 40, 0.18);
+            --line-soft: rgba(20, 30, 40, 0.06);
+
             --accent: #0f766e;
-            --accent-soft: rgba(15, 118, 110, 0.12);
-            --warn: #c37a22;
-            --danger: #bb4432;
-            --shadow: 0 16px 36px rgba(20, 28, 34, 0.08);
+            --accent-strong: #0a5d56;
+            --accent-soft: rgba(15, 118, 110, 0.10);
+            --accent-tint: rgba(15, 118, 110, 0.22);
+
+            --warn: #b87016;
+            --warn-soft: rgba(184, 112, 22, 0.12);
+            --danger: #b54231;
+            --danger-soft: rgba(181, 66, 49, 0.12);
+            --info: #1f7a8c;
+            --info-soft: rgba(31, 122, 140, 0.12);
+
+            --shadow-1: 0 1px 2px rgba(20, 30, 40, 0.04);
+            --shadow-2: 0 6px 18px rgba(20, 30, 40, 0.06), 0 1px 2px rgba(20, 30, 40, 0.04);
+            --shadow-3: 0 12px 32px rgba(20, 30, 40, 0.10), 0 2px 4px rgba(20, 30, 40, 0.05);
+            --shadow-modal: 0 30px 80px rgba(10, 18, 24, 0.22), 0 6px 16px rgba(10, 18, 24, 0.12);
+
+            --r-xs: 8px;
+            --r-sm: 10px;
+            --r-md: 14px;
+            --r-lg: 18px;
+            --r-xl: 22px;
+            --r-pill: 999px;
+
+            --focus-ring: 0 0 0 3px rgba(15, 118, 110, 0.22);
+            --transition: 160ms ease;
         }
 
-        * {
-            box-sizing: border-box;
-            min-width: 0;
-        }
+        * { box-sizing: border-box; min-width: 0; }
+        html { scroll-behavior: smooth; }
 
         body {
             margin: 0;
             color: var(--ink);
             background:
-                radial-gradient(circle at top left, rgba(15, 118, 110, 0.14), transparent 28%),
-                radial-gradient(circle at top right, rgba(195, 122, 34, 0.12), transparent 22%),
-                linear-gradient(180deg, #f7f3ea 0%, #ece4d5 100%);
-            font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+                radial-gradient(1200px 600px at 12% -10%, var(--bg-tint-a), transparent 50%),
+                radial-gradient(900px 500px at 90% -10%, var(--bg-tint-b), transparent 55%),
+                linear-gradient(180deg, var(--bg-canvas-1) 0%, var(--bg-canvas-2) 100%);
+            background-attachment: fixed;
+            font-family: "IBM Plex Sans", "Inter", "Noto Sans SC", system-ui, sans-serif;
+            font-feature-settings: "ss01", "tnum";
             min-height: 100vh;
+            line-height: 1.45;
+            -webkit-font-smoothing: antialiased;
         }
+
+        ::selection { background: var(--accent-tint); color: var(--ink); }
+
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(20, 30, 40, 0.14); border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(20, 30, 40, 0.24); }
 
         .shell {
-            width: min(1520px, calc(100vw - 24px));
+            width: min(1560px, calc(100vw - 28px));
             margin: 0 auto;
-            padding: 20px 0 30px;
+            padding: 22px 0 36px;
         }
 
+        /* ===================================================
+           Hero / summary
+        ==================================================== */
         .hero {
             display: grid;
-            grid-template-columns: 1.4fr 0.9fr;
+            grid-template-columns: 1.5fr 1fr;
             gap: 14px;
-            margin-bottom: 14px;
+            margin-bottom: 16px;
         }
 
         .hero-card,
         .summary-card,
         .device-card {
-            background: var(--panel);
+            background: var(--bg-panel);
             border: 1px solid var(--line);
-            border-radius: 20px;
-            box-shadow: var(--shadow);
-            backdrop-filter: blur(10px);
+            border-radius: var(--r-xl);
+            box-shadow: var(--shadow-2);
+            backdrop-filter: blur(12px);
         }
 
         .hero-card {
-            padding: 18px 20px;
+            padding: 22px 24px;
             position: relative;
             overflow: hidden;
+        }
+
+        .hero-card::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent) 0%, transparent 80%);
+            opacity: 0.65;
         }
 
         .hero-card::after {
             content: "";
             position: absolute;
-            right: -4%;
-            bottom: -42%;
-            width: 220px;
-            height: 220px;
-            background: radial-gradient(circle, rgba(15, 118, 110, 0.12), transparent 66%);
+            right: -6%;
+            bottom: -50%;
+            width: 280px;
+            height: 280px;
+            background: radial-gradient(circle, rgba(15, 118, 110, 0.10), transparent 65%);
             pointer-events: none;
         }
 
@@ -79,22 +139,25 @@
             margin-bottom: 8px;
             font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.18em;
-            color: var(--muted);
+            letter-spacing: 0.22em;
+            color: var(--accent);
+            font-weight: 600;
         }
 
         h1 {
-            margin: 0 0 8px;
-            font-size: clamp(24px, 3vw, 42px);
-            line-height: 1;
+            margin: 0 0 10px;
+            font-size: clamp(26px, 3vw, 40px);
+            line-height: 1.05;
             font-family: "IBM Plex Serif", "Noto Serif SC", serif;
+            letter-spacing: -0.01em;
+            color: var(--ink);
         }
 
         .hero-copy {
             margin: 0;
             color: var(--muted);
-            line-height: 1.5;
-            max-width: 54rem;
+            line-height: 1.55;
+            max-width: 56rem;
             font-size: 14px;
         }
 
@@ -108,9 +171,7 @@
             flex-wrap: wrap;
         }
 
-        .hero-meta {
-            margin-top: 14px;
-        }
+        .hero-meta { margin-top: 14px; }
 
         .pill,
         .tag,
@@ -118,18 +179,26 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 6px 10px;
-            border-radius: 999px;
+            padding: 6px 11px;
+            border-radius: var(--r-pill);
             border: 1px solid var(--line);
-            background: var(--panel-strong);
+            background: var(--bg-panel-strong);
             font-size: 12px;
             line-height: 1.2;
+            color: var(--muted);
+            white-space: nowrap;
         }
 
         .pill strong,
-        .tag strong {
+        .tag strong,
+        .chip strong {
             font-size: 13px;
+            color: var(--ink);
+            font-weight: 600;
         }
+
+        .chip { max-width: 100%; }
+        .chip strong { overflow-wrap: anywhere; }
 
         .summary-grid {
             display: grid;
@@ -138,37 +207,215 @@
         }
 
         .summary-card {
-            padding: 14px 16px;
+            padding: 16px 18px 14px;
+            position: relative;
+            overflow: hidden;
+            transition: transform var(--transition), box-shadow var(--transition);
         }
+
+        .summary-card:hover {
+            box-shadow: var(--shadow-3);
+            transform: translateY(-1px);
+        }
+
+        .summary-card::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0;
+            width: 4px; height: 100%;
+            background: linear-gradient(180deg, var(--accent), transparent 80%);
+            opacity: 0.7;
+        }
+
+        .summary-card[data-tone="warn"]::after { background: linear-gradient(180deg, var(--warn), transparent 80%); }
+        .summary-card[data-tone="danger"]::after { background: linear-gradient(180deg, var(--danger), transparent 80%); }
+        .summary-card[data-tone="info"]::after { background: linear-gradient(180deg, var(--info), transparent 80%); }
 
         .summary-card h3 {
             margin: 0 0 8px;
             font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.14em;
+            letter-spacing: 0.16em;
             color: var(--muted);
+            font-weight: 600;
         }
 
         .summary-value {
-            font-size: 28px;
+            font-size: 30px;
             font-weight: 700;
             line-height: 1;
             font-family: "IBM Plex Mono", monospace;
+            color: var(--ink);
+            letter-spacing: -0.01em;
         }
 
         .summary-note {
             margin-top: 6px;
             color: var(--muted);
             font-size: 12px;
-            line-height: 1.35;
+            line-height: 1.4;
         }
 
-        .type-strip {
+        /* ===================================================
+           Toolbar
+        ==================================================== */
+        .toolbar {
+            position: sticky;
+            top: 8px;
+            z-index: 60;
+            display: flex;
+            gap: 12px;
             margin-bottom: 14px;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 252, 245, 0.86);
+            backdrop-filter: blur(12px) saturate(110%);
+            border-radius: var(--r-xl);
+            box-shadow: var(--shadow-2);
+            align-items: center;
+            flex-wrap: wrap;
         }
+
+        .toolbar-search {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 280px;
+            min-width: 240px;
+            padding: 0 10px 0 36px;
+            background: var(--bg-input);
+            border: 1px solid var(--line);
+            border-radius: var(--r-md);
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .toolbar-search:focus-within {
+            border-color: var(--accent);
+            box-shadow: var(--focus-ring);
+        }
+
+        .toolbar-search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            color: var(--muted);
+            pointer-events: none;
+        }
+
+        .toolbar-search input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            padding: 10px 0;
+            color: var(--ink);
+            outline: none;
+        }
+
+        .toolbar-search kbd {
+            font-family: inherit;
+            font-size: 11px;
+            padding: 2px 6px;
+            border: 1px solid var(--line-strong);
+            border-bottom-width: 2px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.7);
+            color: var(--muted);
+        }
+
+        .toolbar-search-clear {
+            display: none;
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1;
+            padding: 4px 8px;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        .toolbar-search.has-value .toolbar-search-clear { display: inline-flex; }
+        .toolbar-search.has-value kbd { display: none; }
+        .toolbar-search-clear:hover { background: rgba(20, 30, 40, 0.06); color: var(--ink); transform: none; box-shadow: none; }
+
+        .toolbar-controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .toolbar-select {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px 4px 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--line);
+            border-radius: var(--r-md);
+            font-size: 12px;
+            color: var(--muted);
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .toolbar-select:focus-within {
+            border-color: var(--accent);
+            box-shadow: var(--focus-ring);
+        }
+
+        .toolbar-select select {
+            border: none;
+            background: transparent;
+            outline: none;
+            color: var(--ink);
+            font-weight: 600;
+            font-size: 13px;
+            padding: 6px 4px 6px 0;
+            cursor: pointer;
+        }
+
+        .density-toggle {
+            display: inline-flex;
+            padding: 3px;
+            background: rgba(20, 30, 40, 0.06);
+            border: 1px solid var(--line);
+            border-radius: var(--r-md);
+        }
+
+        .density-toggle button {
+            padding: 6px 10px;
+            background: transparent;
+            color: var(--muted);
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background var(--transition), color var(--transition);
+        }
+
+        .density-toggle button:hover {
+            color: var(--ink);
+            transform: none;
+            box-shadow: none;
+        }
+
+        .density-toggle button.active {
+            background: var(--bg-panel-strong);
+            color: var(--ink);
+            box-shadow: var(--shadow-1);
+        }
+
+        /* ===================================================
+           Filters & batch
+        ==================================================== */
+        .type-strip { margin-bottom: 12px; }
 
         .filter-panel {
-            margin-bottom: 14px;
+            margin-bottom: 12px;
             display: grid;
             gap: 8px;
         }
@@ -190,49 +437,65 @@
             font-weight: 600;
         }
 
+        .filter-title strong { font-weight: 600; }
         .filter-title span {
             color: var(--muted);
-            font-weight: 500;
+            font-weight: 400;
             font-size: 12px;
         }
 
         .filter-strip {
-            margin-bottom: 14px;
             display: flex;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
         }
 
         .filter-chip {
-            border: 1px solid rgba(29, 39, 48, 0.12);
-            background: rgba(255, 250, 241, 0.82);
+            border: 1px solid var(--line);
+            background: rgba(255, 252, 245, 0.84);
             color: var(--muted);
-            padding: 7px 11px;
-            border-radius: 999px;
+            padding: 6px 11px;
+            border-radius: var(--r-pill);
             display: inline-flex;
             align-items: center;
             gap: 6px;
             font-size: 12px;
             line-height: 1.2;
+            cursor: pointer;
+            transition: background var(--transition), color var(--transition), border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .filter-chip:hover {
+            border-color: var(--line-strong);
+            color: var(--ink);
+            transform: none;
+            box-shadow: none;
         }
 
         .filter-chip strong {
             color: var(--ink);
-            font-size: 13px;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 1px 7px;
+            margin-left: 2px;
+            border-radius: var(--r-pill);
+            background: rgba(20, 30, 40, 0.06);
         }
 
         .filter-chip.active {
             background: var(--accent);
             color: #fff;
             border-color: transparent;
+            box-shadow: 0 6px 14px rgba(15, 118, 110, 0.22);
         }
 
         .filter-chip.active strong {
             color: #fff;
+            background: rgba(255, 255, 255, 0.18);
         }
 
         .filter-chip-mark {
-            width: 14px;
+            width: 12px;
             text-align: center;
             font-weight: 700;
             opacity: 0.88;
@@ -240,7 +503,7 @@
 
         .filter-chip:disabled {
             opacity: 0.45;
-            cursor: default;
+            cursor: not-allowed;
         }
 
         .batch-bar {
@@ -250,6 +513,10 @@
             justify-content: space-between;
             gap: 10px;
             flex-wrap: wrap;
+            padding: 10px 12px;
+            border-radius: var(--r-lg);
+            border: 1px solid var(--line);
+            background: var(--bg-panel-soft);
         }
 
         .batch-actions {
@@ -258,18 +525,76 @@
             flex-wrap: wrap;
         }
 
+        /* ===================================================
+           Devices grid + cards
+        ==================================================== */
         .devices-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
             gap: 12px;
         }
 
+        .devices-grid.compact {
+            grid-template-columns: repeat(auto-fill, minmax(252px, 1fr));
+            gap: 10px;
+        }
+
         .device-card {
-            padding: 14px;
+            padding: 14px 14px 12px;
             display: grid;
             gap: 12px;
             overflow: hidden;
             position: relative;
+            transition: box-shadow var(--transition), transform var(--transition), border-color var(--transition);
+        }
+
+        .device-card:hover {
+            box-shadow: var(--shadow-3);
+            border-color: var(--line-strong);
+        }
+
+        .device-card::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 3px;
+            background: var(--accent);
+            opacity: 0;
+            transition: opacity var(--transition), background var(--transition);
+        }
+
+        .device-card[data-health="warn"]::before { opacity: 0.85; background: var(--warn); }
+        .device-card[data-health="danger"]::before { opacity: 0.92; background: var(--danger); }
+        .device-card[data-source="remote"]::before { opacity: 0.55; background: var(--info); }
+        .device-card.is-selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent), var(--shadow-2);
+        }
+        .device-card.is-selected::before {
+            opacity: 0.95;
+            background: var(--accent);
+        }
+
+        .devices-grid.compact .device-card {
+            padding: 12px 12px 10px;
+            gap: 10px;
+        }
+
+        .devices-grid.compact .device-title h2 {
+            font-size: 17px;
+        }
+
+        .devices-grid.compact .metric {
+            padding: 8px 10px;
+            gap: 6px;
+        }
+
+        .devices-grid.compact .metric-value {
+            font-size: 16px;
+        }
+
+        .devices-grid.compact .sparkline {
+            display: none;
         }
 
         .device-card.has-new {
@@ -279,16 +604,16 @@
         .new-badge {
             position: absolute;
             top: 12px;
-            left: 12px;
-            padding: 5px 9px;
-            border-radius: 999px;
-            background: #c62828;
+            left: 14px;
+            padding: 5px 10px;
+            border-radius: var(--r-pill);
+            background: var(--danger);
             color: #fff;
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 0.08em;
             line-height: 1;
-            box-shadow: 0 10px 20px rgba(198, 40, 40, 0.22);
+            box-shadow: 0 8px 18px rgba(181, 66, 49, 0.30);
             z-index: 1;
         }
 
@@ -313,9 +638,11 @@
 
         .device-title h2 {
             margin: 0;
-            font-size: 20px;
-            line-height: 1.06;
+            font-size: 19px;
+            line-height: 1.1;
+            font-weight: 700;
             overflow-wrap: anywhere;
+            color: var(--ink);
         }
 
         .device-subtitle {
@@ -341,52 +668,67 @@
             display: inline-flex;
             align-items: center;
             gap: 7px;
-            padding: 6px 10px;
-            border-radius: 999px;
+            padding: 5px 11px;
+            border-radius: var(--r-pill);
             background: var(--accent-soft);
             color: var(--accent);
             font-size: 12px;
+            font-weight: 600;
             white-space: nowrap;
         }
 
         .status::before {
             content: "";
-            width: 8px;
-            height: 8px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
             background: currentColor;
+            box-shadow: 0 0 0 4px var(--accent-soft);
+            animation: pulse 2.2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.55; transform: scale(0.9); }
+        }
+
+        .status.remote {
+            background: var(--info-soft);
+            color: var(--info);
+        }
+
+        .status.remote::before {
+            box-shadow: 0 0 0 4px var(--info-soft);
+            animation: none;
         }
 
         .device-select {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 5px 9px;
-            border-radius: 999px;
+            padding: 5px 10px;
+            border-radius: var(--r-pill);
             border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.72);
+            background: rgba(255, 255, 255, 0.7);
             color: var(--muted);
             font-size: 12px;
             white-space: nowrap;
+            cursor: pointer;
+            transition: border-color var(--transition), color var(--transition);
+        }
+
+        .device-select:hover {
+            border-color: var(--accent);
+            color: var(--ink);
         }
 
         .device-select input {
             margin: 0;
+            accent-color: var(--accent);
         }
 
         .info-row {
             align-items: center;
-        }
-
-        .chip {
-            max-width: 100%;
-            color: var(--muted);
-        }
-
-        .chip strong {
-            color: var(--ink);
-            font-weight: 600;
-            overflow-wrap: anywhere;
         }
 
         .metrics-grid {
@@ -396,13 +738,14 @@
         }
 
         .metric {
-            border-radius: 16px;
-            border: 1px solid rgba(29, 39, 48, 0.09);
-            background: rgba(255, 255, 255, 0.7);
+            border-radius: var(--r-md);
+            border: 1px solid var(--line-soft);
+            background: rgba(255, 255, 255, 0.66);
             padding: 10px 11px;
             display: grid;
             gap: 7px;
             overflow: hidden;
+            position: relative;
         }
 
         .metric-head {
@@ -417,35 +760,39 @@
             text-transform: uppercase;
             letter-spacing: 0.12em;
             color: var(--muted);
+            font-weight: 600;
         }
 
         .metric-value {
-            font-size: 18px;
+            font-size: 17px;
             font-weight: 700;
             font-family: "IBM Plex Mono", monospace;
             white-space: nowrap;
+            color: var(--ink);
+            letter-spacing: -0.01em;
         }
 
         .meter {
-            height: 8px;
-            border-radius: 999px;
+            height: 6px;
+            border-radius: var(--r-pill);
             overflow: hidden;
-            background: rgba(29, 39, 48, 0.08);
+            background: rgba(20, 30, 40, 0.07);
         }
 
         .meter > span {
             display: block;
             height: 100%;
             border-radius: inherit;
-            background: linear-gradient(90deg, var(--accent), #1d9e94);
+            background: linear-gradient(90deg, var(--accent), #19a299);
+            transition: width 0.3s ease;
         }
 
         .meter.warn > span {
-            background: linear-gradient(90deg, #d58929, #f2ae3a);
+            background: linear-gradient(90deg, var(--warn), #d99440);
         }
 
         .meter.danger > span {
-            background: linear-gradient(90deg, #bb4432, #e46751);
+            background: linear-gradient(90deg, var(--danger), #d6634f);
         }
 
         .metric-note {
@@ -458,20 +805,24 @@
 
         .sparkline {
             width: 100%;
-            height: 24px;
+            height: 22px;
+            opacity: 0.85;
         }
 
+        /* ===================================================
+           Detail modal grid
+        ==================================================== */
         .detail-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
             gap: 8px;
         }
 
         .detail {
-            padding: 8px 10px;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.65);
-            border: 1px solid rgba(29, 39, 48, 0.07);
+            padding: 10px 12px;
+            border-radius: var(--r-sm);
+            background: rgba(255, 255, 255, 0.62);
+            border: 1px solid var(--line-soft);
             overflow: hidden;
         }
 
@@ -479,40 +830,59 @@
             margin-bottom: 4px;
             font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.12em;
+            letter-spacing: 0.14em;
             color: var(--muted);
+            font-weight: 600;
         }
 
         .detail-value {
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 600;
-            line-height: 1.35;
+            line-height: 1.4;
             overflow-wrap: anywhere;
             word-break: break-word;
+            color: var(--ink);
         }
 
+        /* ===================================================
+           Buttons
+        ==================================================== */
         button,
         input,
-        select {
+        select,
+        textarea {
             font: inherit;
+            font-family: inherit;
         }
 
         button {
             border: none;
-            border-radius: 12px;
-            padding: 8px 12px;
+            border-radius: var(--r-sm);
+            padding: 8px 13px;
             cursor: pointer;
-            transition: transform 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
+            font-weight: 600;
+            font-size: 13px;
+            line-height: 1.2;
+            transition: transform var(--transition), box-shadow var(--transition), opacity var(--transition), background var(--transition), color var(--transition), border-color var(--transition);
         }
 
         button:hover {
             transform: translateY(-1px);
-            box-shadow: 0 8px 18px rgba(20, 28, 34, 0.08);
+            box-shadow: var(--shadow-2);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:focus-visible {
+            outline: none;
+            box-shadow: var(--focus-ring), var(--shadow-2);
         }
 
         button:disabled {
-            opacity: 0.55;
-            cursor: default;
+            opacity: 0.45;
+            cursor: not-allowed;
             transform: none;
             box-shadow: none;
         }
@@ -522,20 +892,39 @@
             color: white;
         }
 
+        .btn-primary:hover {
+            background: var(--accent-strong);
+        }
+
         .btn-secondary {
-            background: rgba(29, 39, 48, 0.08);
+            background: rgba(20, 30, 40, 0.06);
             color: var(--ink);
+            border: 1px solid transparent;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(20, 30, 40, 0.10);
+            border-color: var(--line);
         }
 
         .btn-danger {
-            background: #bb4432;
+            background: var(--danger);
             color: #fff;
+        }
+
+        .btn-danger:hover {
+            background: #9f3a2a;
         }
 
         .btn-ghost {
             background: transparent;
             color: var(--muted);
-            border: 1px solid rgba(29, 39, 48, 0.14);
+            border: 1px solid var(--line);
+        }
+
+        .btn-ghost:hover {
+            background: rgba(20, 30, 40, 0.05);
+            color: var(--ink);
         }
 
         .saved-badge {
@@ -544,28 +933,45 @@
         }
 
         .empty {
-            padding: 40px 24px;
+            padding: 44px 24px;
             text-align: center;
             color: var(--muted);
-            border-radius: 20px;
-            border: 1px dashed rgba(29, 39, 48, 0.18);
-            background: rgba(255, 250, 241, 0.74);
+            border-radius: var(--r-lg);
+            border: 1px dashed var(--line-strong);
+            background: rgba(255, 252, 245, 0.6);
+            grid-column: 1 / -1;
         }
 
+        .empty h3 {
+            margin: 0 0 6px;
+            color: var(--ink);
+            font-size: 16px;
+        }
+
+        .empty p {
+            margin: 0;
+            font-size: 13px;
+        }
+
+        /* ===================================================
+           Toast
+        ==================================================== */
         .toast {
             position: fixed;
             left: 50%;
-            bottom: 22px;
+            bottom: 26px;
             transform: translateX(-50%) translateY(16px);
-            background: rgba(29, 39, 48, 0.94);
+            background: rgba(20, 30, 40, 0.96);
             color: white;
-            border-radius: 999px;
-            padding: 9px 14px;
+            border-radius: var(--r-pill);
+            padding: 10px 16px;
             font-size: 13px;
+            font-weight: 500;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.18s ease, transform 0.18s ease;
-            z-index: 120;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            z-index: 200;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
         }
 
         .toast.show {
@@ -573,70 +979,114 @@
             transform: translateX(-50%) translateY(0);
         }
 
-        .detail-modal {
+        /* ===================================================
+           Modals (shared)
+        ==================================================== */
+        .detail-modal,
+        .update-modal,
+        .terminal-modal {
             position: fixed;
             inset: 0;
             display: none;
             align-items: center;
             justify-content: center;
-            padding: 14px;
-            background: rgba(16, 22, 26, 0.34);
-            backdrop-filter: blur(5px);
+            padding: 18px;
+            background: var(--bg-overlay);
+            backdrop-filter: blur(6px);
             z-index: 100;
         }
 
-        .detail-modal.open {
+        .detail-modal.open,
+        .update-modal.open,
+        .terminal-modal.open {
             display: flex;
+            animation: overlayIn 0.18s ease;
+        }
+
+        @keyframes overlayIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes shellIn {
+            from { transform: translateY(8px) scale(0.985); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+
+        .update-modal { z-index: 105; }
+        .terminal-modal { z-index: 110; }
+
+        .detail-shell,
+        .update-shell {
+            background: var(--bg-panel);
+            border: 1px solid var(--line);
+            border-radius: var(--r-xl);
+            box-shadow: var(--shadow-modal);
+            animation: shellIn 0.22s ease;
         }
 
         .detail-shell {
-            width: min(980px, 100%);
-            max-height: min(86vh, 860px);
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 22px;
-            box-shadow: 0 22px 60px rgba(0, 0, 0, 0.16);
+            width: min(1000px, 100%);
+            max-height: min(88vh, 880px);
             display: grid;
-            grid-template-rows: auto auto 1fr;
+            grid-template-rows: auto auto auto 1fr;
             overflow: hidden;
         }
 
-        .detail-top {
+        .detail-top,
+        .update-top {
             display: flex;
             justify-content: space-between;
             align-items: start;
-            gap: 10px;
-            padding: 16px 18px 12px;
-            border-bottom: 1px solid rgba(29, 39, 48, 0.08);
+            gap: 12px;
+            padding: 18px 22px 14px;
+            border-bottom: 1px solid var(--line-soft);
+            position: relative;
         }
 
-        .detail-top h3 {
+        .detail-top::before,
+        .update-top::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0;
+            height: 3px;
+            width: 100%;
+            background: linear-gradient(90deg, var(--accent), transparent 70%);
+            opacity: 0.6;
+        }
+
+        .detail-top h3,
+        .update-top h3 {
             margin: 0 0 4px;
             font-size: 22px;
-            line-height: 1.06;
+            line-height: 1.1;
             overflow-wrap: anywhere;
+            font-weight: 700;
+            letter-spacing: -0.01em;
         }
 
-        .detail-top p {
+        .detail-top p,
+        .update-top p {
             margin: 0;
             color: var(--muted);
             font-size: 13px;
             overflow-wrap: anywhere;
+            line-height: 1.45;
         }
 
         .detail-summary {
-            padding: 0 18px 14px;
+            padding: 0 22px 14px;
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
         }
 
         .detail-editor {
-            margin: 0 18px 14px;
+            margin: 0 22px 14px;
             padding: 14px;
-            border-radius: 16px;
-            border: 1px solid rgba(29, 39, 48, 0.08);
-            background: rgba(255, 255, 255, 0.68);
+            border-radius: var(--r-md);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.66);
             display: grid;
             gap: 10px;
         }
@@ -651,6 +1101,7 @@
 
         .detail-editor-head strong {
             font-size: 14px;
+            color: var(--ink);
         }
 
         .detail-editor-head span {
@@ -664,21 +1115,39 @@
             gap: 10px;
         }
 
-        .detail-editor label {
+        .detail-editor label,
+        .update-card label,
+        .terminal-connect label {
             display: grid;
             gap: 5px;
             color: var(--muted);
             font-size: 12px;
+            font-weight: 500;
         }
 
         .detail-editor input,
-        .detail-editor textarea {
+        .detail-editor textarea,
+        .update-card input,
+        .update-card select,
+        .update-card textarea {
             width: 100%;
-            padding: 9px 10px;
-            border-radius: 10px;
-            border: 1px solid rgba(29, 39, 48, 0.12);
-            background: rgba(255, 255, 255, 0.9);
+            padding: 9px 11px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--line);
+            background: var(--bg-input);
             color: var(--ink);
+            font-size: 13px;
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .detail-editor input:focus,
+        .detail-editor textarea:focus,
+        .update-card input:focus,
+        .update-card select:focus,
+        .update-card textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: var(--focus-ring);
         }
 
         .detail-editor textarea {
@@ -699,7 +1168,7 @@
         }
 
         .detail-editor-status.dirty {
-            color: #b45309;
+            color: var(--warn);
         }
 
         .detail-editor-status.saved {
@@ -707,62 +1176,23 @@
         }
 
         .detail-body {
-            padding: 0 18px 18px;
+            padding: 0 22px 18px;
             overflow: auto;
         }
 
-        .update-modal {
-            position: fixed;
-            inset: 0;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 14px;
-            background: rgba(16, 22, 26, 0.38);
-            backdrop-filter: blur(5px);
-            z-index: 105;
-        }
-
-        .update-modal.open {
-            display: flex;
-        }
-
+        /* ===================================================
+           Update / Remote modal
+        ==================================================== */
         .update-shell {
             width: min(1180px, 100%);
             max-height: min(90vh, 980px);
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 22px;
-            box-shadow: 0 24px 64px rgba(20, 28, 34, 0.16);
             display: grid;
             grid-template-rows: auto 1fr;
             overflow: hidden;
         }
 
-        .update-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            gap: 12px;
-            padding: 16px 18px 12px;
-            border-bottom: 1px solid rgba(29, 39, 48, 0.08);
-        }
-
-        .update-top h3 {
-            margin: 0 0 4px;
-            font-size: 22px;
-            line-height: 1.08;
-        }
-
-        .update-top p {
-            margin: 0;
-            color: var(--muted);
-            font-size: 13px;
-            line-height: 1.4;
-        }
-
         .update-body {
-            padding: 16px 18px 18px;
+            padding: 18px 22px 22px;
             overflow: auto;
             display: grid;
             gap: 14px;
@@ -775,10 +1205,10 @@
         }
 
         .update-card {
-            padding: 14px;
-            border-radius: 18px;
-            border: 1px solid rgba(29, 39, 48, 0.08);
-            background: rgba(255, 255, 255, 0.68);
+            padding: 16px;
+            border-radius: var(--r-lg);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.66);
             display: grid;
             gap: 12px;
         }
@@ -786,6 +1216,19 @@
         .update-card h4 {
             margin: 0;
             font-size: 14px;
+            color: var(--ink);
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .update-card h4::before {
+            content: "";
+            width: 4px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: var(--r-pill);
         }
 
         .update-form-grid {
@@ -801,39 +1244,19 @@
             align-items: center;
         }
 
-        .update-card label,
-        .update-card .remember {
+        .update-card .remember,
+        .update-card .update-note {
             color: var(--muted);
             font-size: 12px;
         }
 
-        .update-card label {
-            display: grid;
-            gap: 5px;
-        }
-
-        .update-card input,
-        .update-card select,
         .update-card textarea {
-            width: 100%;
-            padding: 9px 10px;
-            border-radius: 10px;
-            border: 1px solid rgba(29, 39, 48, 0.12);
-            background: rgba(255, 255, 255, 0.88);
-            color: var(--ink);
-        }
-
-        .update-card textarea {
-            min-height: 92px;
+            min-height: 88px;
             resize: vertical;
             font: 13px/1.45 "IBM Plex Mono", monospace;
         }
 
-        .update-note {
-            color: var(--muted);
-            font-size: 12px;
-            line-height: 1.45;
-        }
+        .update-note { line-height: 1.5; }
 
         .update-targets {
             display: flex;
@@ -852,10 +1275,10 @@
             justify-content: space-between;
             gap: 10px;
             flex-wrap: wrap;
-            padding: 10px;
-            border-radius: 16px;
-            border: 1px solid rgba(29, 39, 48, 0.08);
-            background: rgba(255, 255, 255, 0.64);
+            padding: 12px;
+            border-radius: var(--r-md);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.62);
         }
 
         .remote-row-main,
@@ -866,9 +1289,7 @@
             flex-wrap: wrap;
         }
 
-        .remote-row-actions {
-            justify-content: flex-end;
-        }
+        .remote-row-actions { justify-content: flex-end; }
 
         .update-status {
             display: grid;
@@ -890,10 +1311,10 @@
         }
 
         .update-progress-track {
-            height: 10px;
-            border-radius: 999px;
+            height: 8px;
+            border-radius: var(--r-pill);
             overflow: hidden;
-            background: rgba(29, 39, 48, 0.08);
+            background: rgba(20, 30, 40, 0.07);
         }
 
         .update-progress-track > span {
@@ -901,7 +1322,7 @@
             height: 100%;
             width: 0;
             border-radius: inherit;
-            background: linear-gradient(90deg, var(--accent), #1d9e94);
+            background: linear-gradient(90deg, var(--accent), #19a299);
             transition: width 0.18s ease;
         }
 
@@ -914,34 +1335,28 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 6px 10px;
-            border-radius: 999px;
+            padding: 5px 11px;
+            border-radius: var(--r-pill);
             font-size: 12px;
             font-weight: 600;
-            background: rgba(29, 39, 48, 0.08);
+            background: rgba(20, 30, 40, 0.07);
             color: var(--ink);
         }
 
-        .status-chip.running,
-        .status-chip.success {
-            background: rgba(15, 118, 110, 0.12);
-            color: var(--accent);
+        .status-chip::before {
+            content: "";
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.85;
         }
 
-        .status-chip.skipped {
-            background: rgba(96, 112, 124, 0.12);
-            color: var(--muted);
-        }
-
-        .status-chip.failed {
-            background: rgba(187, 68, 50, 0.12);
-            color: var(--danger);
-        }
-
-        .status-chip.partial {
-            background: rgba(195, 122, 34, 0.14);
-            color: var(--warn);
-        }
+        .status-chip.running { background: var(--accent-soft); color: var(--accent); }
+        .status-chip.success { background: var(--accent-soft); color: var(--accent); }
+        .status-chip.skipped { background: rgba(96, 112, 124, 0.12); color: var(--muted); }
+        .status-chip.failed { background: var(--danger-soft); color: var(--danger); }
+        .status-chip.partial { background: var(--warn-soft); color: var(--warn); }
 
         .update-results {
             display: grid;
@@ -951,9 +1366,9 @@
 
         .update-result {
             padding: 14px;
-            border-radius: 18px;
-            border: 1px solid rgba(29, 39, 48, 0.08);
-            background: rgba(255, 255, 255, 0.68);
+            border-radius: var(--r-md);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.66);
             display: grid;
             gap: 10px;
         }
@@ -979,14 +1394,15 @@
             gap: 4px;
         }
 
-        .update-result-title strong,
-        .update-result-title span {
+        .update-result-title strong {
+            color: var(--ink);
             overflow-wrap: anywhere;
         }
 
         .update-result-title span {
             color: var(--muted);
             font-size: 12px;
+            overflow-wrap: anywhere;
         }
 
         .update-result-note {
@@ -1003,20 +1419,20 @@
         }
 
         .attempt {
-            padding: 5px 8px;
-            border-radius: 999px;
-            background: rgba(29, 39, 48, 0.08);
+            padding: 4px 8px;
+            border-radius: var(--r-pill);
+            background: rgba(20, 30, 40, 0.07);
             color: var(--muted);
             font-size: 11px;
         }
 
         .attempt.ok {
-            background: rgba(15, 118, 110, 0.12);
+            background: var(--accent-soft);
             color: var(--accent);
         }
 
         .attempt.fail {
-            background: rgba(187, 68, 50, 0.12);
+            background: var(--danger-soft);
             color: var(--danger);
         }
 
@@ -1025,40 +1441,30 @@
             max-height: 220px;
             overflow: auto;
             padding: 12px;
-            border-radius: 14px;
-            background: #11191b;
+            border-radius: var(--r-md);
+            background: #0f1719;
             color: #d4e5e5;
             font: 12px/1.45 "IBM Plex Mono", monospace;
             white-space: pre-wrap;
             word-break: break-word;
+            border: 1px solid rgba(255,255,255,0.04);
         }
 
-        .terminal-modal {
-            position: fixed;
-            inset: 0;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 14px;
-            background: rgba(16, 22, 26, 0.46);
-            backdrop-filter: blur(6px);
-            z-index: 110;
-        }
-
-        .terminal-modal.open {
-            display: flex;
-        }
-
+        /* ===================================================
+           Terminal modal
+        ==================================================== */
         .terminal-shell {
             width: min(1180px, 100%);
             height: min(88vh, 900px);
             background: #101516;
             color: #d4e5e5;
-            border-radius: 24px;
+            border-radius: var(--r-xl);
             overflow: hidden;
             display: grid;
             grid-template-rows: auto auto auto 1fr auto;
-            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.40);
+            animation: shellIn 0.22s ease;
+            border: 1px solid rgba(255,255,255,0.06);
         }
 
         .terminal-top {
@@ -1066,8 +1472,8 @@
             justify-content: space-between;
             align-items: center;
             gap: 10px;
-            padding: 12px 16px;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent);
+            padding: 12px 18px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent);
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
@@ -1080,6 +1486,7 @@
         .terminal-title strong {
             font-size: 16px;
             overflow-wrap: anywhere;
+            font-weight: 700;
         }
 
         .terminal-title span {
@@ -1095,14 +1502,25 @@
         }
 
         .terminal-toolbar button {
-            padding: 7px 10px;
+            padding: 7px 11px;
             border-radius: 10px;
+            font-size: 12px;
+        }
+
+        .terminal-toolbar .btn-ghost {
+            color: rgba(212, 229, 229, 0.78);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .terminal-toolbar .btn-ghost:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: white;
         }
 
         .terminal-connect {
             display: grid;
             gap: 10px;
-            padding: 12px 16px;
+            padding: 14px 18px;
             background: rgba(255, 255, 255, 0.03);
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
@@ -1115,12 +1533,12 @@
         }
 
         .terminal-mode-note {
-            padding: 9px 12px;
+            padding: 10px 12px;
             border-radius: 10px;
             background: rgba(255, 255, 255, 0.05);
-            color: rgba(212, 229, 229, 0.72);
+            color: rgba(212, 229, 229, 0.75);
             font-size: 12px;
-            line-height: 1.45;
+            line-height: 1.5;
         }
 
         .terminal-auth-grid {
@@ -1134,20 +1552,25 @@
         }
 
         .terminal-connect label {
-            display: grid;
-            gap: 5px;
-            font-size: 12px;
-            color: rgba(212, 229, 229, 0.72);
+            color: rgba(212, 229, 229, 0.74);
         }
 
         .terminal-connect input,
         .terminal-connect select {
             width: 100%;
-            padding: 9px 10px;
+            padding: 9px 11px;
             border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 10px;
+            border-radius: var(--r-sm);
             background: rgba(255, 255, 255, 0.08);
             color: white;
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .terminal-connect input:focus,
+        .terminal-connect select:focus {
+            outline: none;
+            border-color: rgba(79, 214, 201, 0.7);
+            box-shadow: 0 0 0 3px rgba(79, 214, 201, 0.16);
         }
 
         .terminal-connect-actions {
@@ -1163,15 +1586,17 @@
             gap: 6px;
             color: rgba(212, 229, 229, 0.74);
             font-size: 12px;
+            cursor: pointer;
         }
 
         .remember input {
             width: auto;
+            accent-color: #4fd6c9;
         }
 
         .terminal-status {
             min-height: 20px;
-            padding: 8px 16px 0;
+            padding: 8px 18px 0;
             color: rgba(212, 229, 229, 0.74);
             font-size: 12px;
         }
@@ -1185,7 +1610,7 @@
 
         .terminal-output {
             margin: 0;
-            padding: 14px 16px 20px;
+            padding: 14px 18px 22px;
             overflow: auto;
             font: 13px/1.45 "IBM Plex Mono", monospace;
             white-space: pre-wrap;
@@ -1198,12 +1623,12 @@
         }
 
         .terminal-hint {
-            padding: 10px 16px 14px;
+            padding: 10px 18px 14px;
             border-top: 1px solid rgba(255, 255, 255, 0.06);
             background: rgba(255, 255, 255, 0.03);
             color: rgba(212, 229, 229, 0.62);
             font-size: 12px;
-            line-height: 1.45;
+            line-height: 1.5;
         }
 
         .terminal-webssh {
@@ -1218,7 +1643,7 @@
             justify-content: space-between;
             align-items: center;
             gap: 10px;
-            padding: 10px 16px;
+            padding: 10px 18px;
             background: rgba(255, 255, 255, 0.03);
             color: rgba(212, 229, 229, 0.74);
             font-size: 12px;
@@ -1230,7 +1655,7 @@
         }
 
         .terminal-launcher {
-            padding: 18px 16px 20px;
+            padding: 22px 18px 24px;
             display: grid;
             gap: 14px;
             align-content: start;
@@ -1241,7 +1666,7 @@
             margin: 0;
             color: rgba(212, 229, 229, 0.78);
             font-size: 13px;
-            line-height: 1.5;
+            line-height: 1.55;
         }
 
         .terminal-launcher-actions {
@@ -1252,7 +1677,7 @@
 
         .terminal-url {
             padding: 10px 12px;
-            border-radius: 12px;
+            border-radius: var(--r-sm);
             background: rgba(255, 255, 255, 0.04);
             border: 1px solid rgba(255, 255, 255, 0.08);
             color: rgba(212, 229, 229, 0.7);
@@ -1260,6 +1685,9 @@
             overflow-wrap: anywhere;
         }
 
+        /* ===================================================
+           Responsive
+        ==================================================== */
         @media (max-width: 1080px) {
             .hero {
                 grid-template-columns: 1fr;
@@ -1275,13 +1703,12 @@
 
         @media (max-width: 760px) {
             .shell {
-                width: min(calc(100vw - 14px), 1520px);
+                width: min(calc(100vw - 14px), 1560px);
                 padding-top: 14px;
             }
 
             .summary-grid,
             .metrics-grid,
-            .detail-grid,
             .update-grid,
             .update-form-grid,
             .update-results,
@@ -1290,8 +1717,23 @@
                 grid-template-columns: 1fr;
             }
 
-            .devices-grid {
+            .devices-grid,
+            .devices-grid.compact {
                 grid-template-columns: 1fr;
+            }
+
+            .toolbar {
+                position: static;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .toolbar-search {
+                min-width: 0;
+            }
+
+            .toolbar-controls {
+                justify-content: space-between;
             }
 
             .batch-bar,
@@ -1313,7 +1755,7 @@
 </head>
 <body>
     <div class="shell">
-        <section class="hero">
+        <header class="hero">
             <div class="hero-card">
                 <div class="eyebrow">Broadcast Dashboard</div>
                 <h1>通用 Linux 设备管理面板</h1>
@@ -1328,19 +1770,52 @@
                 </div>
             </div>
             <div class="summary-grid" id="summary-grid"></div>
+        </header>
+
+        <section class="toolbar" aria-label="工具栏">
+            <div class="toolbar-search" id="toolbar-search">
+                <svg class="toolbar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="m20 20-3.5-3.5"></path>
+                </svg>
+                <input id="device-search" type="search" autocomplete="off" placeholder="搜索 主机 / IP / 标题 / 备注 / 型号 / 厂商" aria-label="搜索设备">
+                <kbd>/</kbd>
+                <button class="toolbar-search-clear" id="btn-search-clear" type="button" aria-label="清空搜索">×</button>
+            </div>
+            <div class="toolbar-controls">
+                <label class="toolbar-select">
+                    <span>排序</span>
+                    <select id="device-sort" aria-label="排序方式">
+                        <option value="default">默认</option>
+                        <option value="name">名称 A→Z</option>
+                        <option value="ip">IP 升序</option>
+                        <option value="cpu">CPU 高 → 低</option>
+                        <option value="mem">内存 高 → 低</option>
+                        <option value="cmm">CMM 高 → 低</option>
+                        <option value="uptime">运行时长 长 → 短</option>
+                        <option value="recent">最近上线 新 → 旧</option>
+                    </select>
+                </label>
+                <div class="density-toggle" role="group" aria-label="密度">
+                    <button id="btn-density-comfortable" class="active" data-density="comfortable" type="button">舒适</button>
+                    <button id="btn-density-compact" data-density="compact" type="button">紧凑</button>
+                </div>
+                <button class="btn-secondary" id="btn-open-remotes" type="button">远程面板</button>
+            </div>
         </section>
 
         <section class="type-strip" id="type-strip"></section>
+
         <section class="filter-panel">
             <div class="filter-head">
                 <div class="filter-title">
                     <strong>位置筛选</strong>
                     <span>可多选，不勾选就是全部显示</span>
                 </div>
-                <button class="btn-secondary" id="btn-open-remotes">远程面板</button>
             </div>
             <div class="filter-strip" id="site-strip"></div>
         </section>
+
         <section class="filter-panel">
             <div class="filter-head">
                 <div class="filter-title">
@@ -1350,6 +1825,7 @@
             </div>
             <div class="filter-strip" id="model-strip"></div>
         </section>
+
         <section class="batch-bar">
             <div class="hero-meta">
                 <div class="pill">当前筛选 <strong id="visible-count">0</strong></div>
@@ -1357,16 +1833,17 @@
                 <div class="pill">群发更新 <strong>SSH / Telnet / install.sh</strong></div>
             </div>
             <div class="batch-actions">
-                <button class="btn-secondary" id="btn-select-all">全选在线设备</button>
-                <button class="btn-secondary" id="btn-clear-selection">清空选择</button>
-                <button class="btn-secondary" id="btn-open-install">远程安装</button>
-                <button class="btn-primary" id="btn-open-update">群发更新</button>
+                <button class="btn-secondary" id="btn-select-all" type="button">全选在线设备</button>
+                <button class="btn-secondary" id="btn-clear-selection" type="button">清空选择</button>
+                <button class="btn-secondary" id="btn-open-install" type="button">远程安装</button>
+                <button class="btn-primary" id="btn-open-update" type="button">群发更新</button>
             </div>
         </section>
+
         <section class="devices-grid" id="devices-grid"></section>
     </div>
 
-    <div class="terminal-modal" id="terminal-modal">
+    <div class="terminal-modal" id="terminal-modal" role="dialog" aria-modal="true" aria-labelledby="terminal-heading">
         <div class="terminal-shell">
             <div class="terminal-top">
                 <div class="terminal-title">
@@ -1374,10 +1851,10 @@
                     <span id="terminal-subheading">等待连接</span>
                 </div>
                 <div class="terminal-toolbar">
-                    <button class="btn-ghost" id="btn-ctrl-c">Ctrl+C</button>
-                    <button class="btn-ghost" id="btn-ctrl-d">Ctrl+D</button>
-                    <button class="btn-ghost" id="btn-clear-view">清空窗口</button>
-                    <button class="btn-danger" id="btn-terminal-close">关闭终端</button>
+                    <button class="btn-ghost" id="btn-ctrl-c" type="button">Ctrl+C</button>
+                    <button class="btn-ghost" id="btn-ctrl-d" type="button">Ctrl+D</button>
+                    <button class="btn-ghost" id="btn-clear-view" type="button">清空窗口</button>
+                    <button class="btn-danger" id="btn-terminal-close" type="button">关闭终端</button>
                 </div>
             </div>
 
@@ -1412,7 +1889,7 @@
                             <input id="terminal-remember" type="checkbox" checked>
                             记住密码（当前浏览器）
                         </label>
-                        <button class="btn-primary" id="btn-terminal-connect">连接</button>
+                        <button class="btn-primary" id="btn-terminal-connect" type="button">连接</button>
                     </div>
                 </div>
             </div>
@@ -1421,13 +1898,13 @@
             <div class="terminal-webssh hidden" id="terminal-webssh">
                 <div class="terminal-webssh-bar">
                     <span id="terminal-webssh-label">SSH 通过 webssh2 新窗口打开</span>
-                    <button class="btn-secondary" id="btn-webssh-open">进入 SSH</button>
+                    <button class="btn-secondary" id="btn-webssh-open" type="button">进入 SSH</button>
                 </div>
                 <div class="terminal-launcher">
                     <p>webssh2 不再嵌入当前页面。进入终端页后，请手动点击下面按钮进入 SSH；Telnet 仍然使用当前页面内置终端。</p>
                     <div class="terminal-launcher-actions">
-                        <button class="btn-primary" id="btn-webssh-open-main">进入 SSH 窗口</button>
-                        <button class="btn-secondary" id="btn-webssh-copy">复制地址</button>
+                        <button class="btn-primary" id="btn-webssh-open-main" type="button">进入 SSH 窗口</button>
+                        <button class="btn-secondary" id="btn-webssh-copy" type="button">复制地址</button>
                     </div>
                     <div class="terminal-url" id="terminal-webssh-url"></div>
                 </div>
@@ -1439,14 +1916,14 @@
         </div>
     </div>
 
-    <div class="detail-modal" id="detail-modal">
+    <div class="detail-modal" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-heading">
         <div class="detail-shell">
             <div class="detail-top">
                 <div>
                     <h3 id="detail-heading">设备详情</h3>
                     <p id="detail-subheading">等待选择设备</p>
                 </div>
-                <button class="btn-secondary" id="btn-detail-close">关闭</button>
+                <button class="btn-secondary" id="btn-detail-close" type="button">关闭</button>
             </div>
             <div class="detail-summary" id="detail-summary"></div>
             <div class="detail-editor">
@@ -1465,8 +1942,8 @@
                     </label>
                 </div>
                 <div class="detail-editor-actions">
-                    <button class="btn-primary" id="btn-detail-save">保存</button>
-                    <button class="btn-secondary" id="btn-detail-reset">清空标题 / 备注</button>
+                    <button class="btn-primary" id="btn-detail-save" type="button">保存</button>
+                    <button class="btn-secondary" id="btn-detail-reset" type="button">清空标题 / 备注</button>
                     <span class="detail-editor-status" id="detail-editor-status"></span>
                 </div>
             </div>
@@ -1476,14 +1953,14 @@
         </div>
     </div>
 
-    <div class="update-modal" id="update-modal">
+    <div class="update-modal" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="update-heading">
         <div class="update-shell">
             <div class="update-top">
                 <div>
                     <h3 id="update-heading">群发更新</h3>
                     <p id="update-subheading">使用当前 Dashboard 主机生成最新更新包，并批量下发到所选设备。</p>
                 </div>
-                <button class="btn-secondary" id="btn-update-close">关闭</button>
+                <button class="btn-secondary" id="btn-update-close" type="button">关闭</button>
             </div>
             <div class="update-body">
                 <div class="update-grid">
@@ -1513,10 +1990,10 @@
                                 非 root 时尝试 sudo 安装
                             </label>
                         </div>
-	                            <label>
-	                                sudo 密码
-	                                <input id="update-sudo-password" type="text" placeholder="留空则默认使用登录密码">
-	                            </label>
+                        <label>
+                            sudo 密码
+                            <input id="update-sudo-password" type="text" placeholder="留空则默认使用登录密码">
+                        </label>
                     </div>
                     <div class="update-card">
                         <h4>目标设备</h4>
@@ -1533,8 +2010,8 @@
                         <div class="update-note">适合单台首装或补充主机名。会和当前已选在线设备、网段扫描结果一起执行自动安装 / 更新。</div>
                         <div class="update-status" id="update-status">尚未启动更新任务。</div>
                         <div class="update-inline">
-                            <button class="btn-primary" id="btn-update-start">开始安装 / 更新</button>
-                            <button class="btn-secondary" id="btn-update-refresh">刷新结果</button>
+                            <button class="btn-primary" id="btn-update-start" type="button">开始安装 / 更新</button>
+                            <button class="btn-secondary" id="btn-update-refresh" type="button">刷新结果</button>
                         </div>
                     </div>
                 </div>
@@ -1551,10 +2028,10 @@
                                 端口
                                 <input id="update-ssh-port" type="number" value="22">
                             </label>
-	                            <label>
-	                                密码
-	                                <input id="update-ssh-password" type="text" placeholder="留空则尝试本机 SSH key/agent">
-	                            </label>
+                            <label>
+                                密码
+                                <input id="update-ssh-password" type="text" placeholder="留空则尝试本机 SSH key/agent">
+                            </label>
                         </div>
                         <div class="update-note">如果 Telnet 用户名 / 密码留空，会自动继承这里填写的用户名 / 密码。</div>
                     </div>
@@ -1569,10 +2046,10 @@
                                 端口
                                 <input id="update-telnet-port" type="number" value="23">
                             </label>
-	                            <label>
-	                                密码
-	                                <input id="update-telnet-password" type="text" placeholder="按需填写">
-	                            </label>
+                            <label>
+                                密码
+                                <input id="update-telnet-password" type="text" placeholder="按需填写">
+                            </label>
                         </div>
                         <div class="update-note">如果这里留空，会自动回退到 SSH 区填写的用户名 / 密码。</div>
                     </div>
@@ -1595,14 +2072,14 @@
         </div>
     </div>
 
-    <div class="update-modal" id="remote-modal">
+    <div class="update-modal" id="remote-modal" role="dialog" aria-modal="true" aria-labelledby="remote-heading">
         <div class="update-shell">
             <div class="update-top">
                 <div>
-                    <h3>远程 Dashboard</h3>
+                    <h3 id="remote-heading">远程 Dashboard</h3>
                     <p>聚合其他办公室面板的设备列表到当前页面（远程设备为只读展示）。</p>
                 </div>
-                <button class="btn-secondary" id="btn-remote-close">关闭</button>
+                <button class="btn-secondary" id="btn-remote-close" type="button">关闭</button>
             </div>
             <div class="update-body">
                 <div class="update-grid">
@@ -1632,8 +2109,8 @@
                                 <input id="remote-enabled" type="checkbox" checked>
                                 启用
                             </label>
-                            <button class="btn-primary" id="btn-remote-save">保存</button>
-                            <button class="btn-secondary" id="btn-remote-reset">清空</button>
+                            <button class="btn-primary" id="btn-remote-save" type="button">保存</button>
+                            <button class="btn-secondary" id="btn-remote-reset" type="button">清空</button>
                         </div>
                         <div class="update-note">保存后会自动刷新设备列表，位置筛选中会出现对应标签。</div>
                     </div>
@@ -4094,6 +4571,322 @@
                 closeDeviceDetail();
             }
         });
+
+        /* ====== UI enhancements (search / sort / density / health / overlay-close) ====== */
+        const UI_PREFS_KEY = 'broadcast.axera.ui_prefs.v1';
+
+        const uiPrefs = (() => {
+            try {
+                const raw = JSON.parse(localStorage.getItem(UI_PREFS_KEY) || '{}');
+                return {
+                    sort: typeof raw.sort === 'string' ? raw.sort : 'default',
+                    density: raw.density === 'compact' ? 'compact' : 'comfortable',
+                    search: '',
+                };
+            } catch (_) {
+                return { sort: 'default', density: 'comfortable', search: '' };
+            }
+        })();
+
+        function persistUiPrefs() {
+            try {
+                localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
+                    sort: uiPrefs.sort,
+                    density: uiPrefs.density,
+                }));
+            } catch (_) {}
+        }
+
+        const ui = {
+            search: document.getElementById('device-search'),
+            searchWrap: document.getElementById('toolbar-search'),
+            searchClear: document.getElementById('btn-search-clear'),
+            sort: document.getElementById('device-sort'),
+            densityComfortable: document.getElementById('btn-density-comfortable'),
+            densityCompact: document.getElementById('btn-density-compact'),
+        };
+
+        function deviceHealthLevel(device) {
+            if (!device || device.source_kind !== 'local') return '';
+            const candidates = [
+                Number(device.cpu_usage_percent),
+                Number(device.mem_used_percent),
+            ];
+            if (device.gpu_present) {
+                const v = device.gpu_usage_percent !== null ? device.gpu_usage_percent : device.gpu_mem_used_percent;
+                candidates.push(Number(v));
+            }
+            if (device.is_ax && device.cmm_total_kb !== null) {
+                candidates.push(Number(device.cmm_used_percent));
+            }
+            const cleaned = candidates.filter((v) => !Number.isNaN(v) && Number.isFinite(v));
+            if (!cleaned.length) return '';
+            const max = Math.max(...cleaned);
+            if (max >= 90) return 'danger';
+            if (max >= 75) return 'warn';
+            return '';
+        }
+
+        function deviceSearchHaystack(device) {
+            return [
+                device.display_name,
+                device.hostname,
+                device.ip,
+                device.custom_title,
+                device.custom_note,
+                device.device_type,
+                device.os_name,
+                device.platform_vendor,
+                device.board_vendor,
+                device.board_model,
+                device.board_id,
+                device.chip_type,
+                device.arch,
+                device.machine,
+                device.site_label,
+                device.default_user,
+                device.version,
+            ].filter(Boolean).join(' ').toLowerCase();
+        }
+
+        function applyDeviceSearch(devices) {
+            const term = (uiPrefs.search || '').trim().toLowerCase();
+            if (!term) return devices.slice();
+            const tokens = term.split(/\s+/).filter(Boolean);
+            return devices.filter((device) => {
+                const hay = deviceSearchHaystack(device);
+                return tokens.every((tok) => hay.includes(tok));
+            });
+        }
+
+        function ipNumeric(ip) {
+            const parts = String(ip || '').split('.').map((s) => Number(s) || 0);
+            return ((parts[0] & 0xff) << 24 >>> 0) +
+                ((parts[1] & 0xff) << 16) +
+                ((parts[2] & 0xff) << 8) +
+                (parts[3] & 0xff);
+        }
+
+        function numericOr(value, fallback) {
+            const n = Number(value);
+            if (value === null || value === undefined || Number.isNaN(n) || !Number.isFinite(n)) return fallback;
+            return n;
+        }
+
+        function applyDeviceSort(devices) {
+            const list = devices.slice();
+            switch (uiPrefs.sort) {
+                case 'name':
+                    return list.sort((a, b) => String(a.display_name || '')
+                        .localeCompare(String(b.display_name || ''), 'zh-CN', { numeric: true, sensitivity: 'base' }));
+                case 'ip':
+                    return list.sort((a, b) => ipNumeric(a.ip) - ipNumeric(b.ip));
+                case 'cpu':
+                    return list.sort((a, b) => numericOr(b.cpu_usage_percent, -1) - numericOr(a.cpu_usage_percent, -1));
+                case 'mem':
+                    return list.sort((a, b) => numericOr(b.mem_used_percent, -1) - numericOr(a.mem_used_percent, -1));
+                case 'cmm':
+                    return list.sort((a, b) => numericOr(b.cmm_used_percent, -1) - numericOr(a.cmm_used_percent, -1));
+                case 'uptime':
+                    return list.sort((a, b) => numericOr(b.uptime_seconds, -1) - numericOr(a.uptime_seconds, -1));
+                case 'recent':
+                    return list.sort((a, b) => numericOr(b.first_seen, -1) - numericOr(a.first_seen, -1));
+                default:
+                    return list;
+            }
+        }
+
+        function applyDisplayPipeline(devices) {
+            return applyDeviceSort(applyDeviceSearch(devices));
+        }
+
+        function decorateDeviceCards(devices) {
+            const cards = elements.devicesGrid.querySelectorAll('.device-card');
+            devices.forEach((device, idx) => {
+                const card = cards[idx];
+                if (!card) return;
+                const health = deviceHealthLevel(device);
+                if (health) {
+                    card.dataset.health = health;
+                } else {
+                    delete card.dataset.health;
+                }
+                card.dataset.source = device.source_kind === 'local' ? 'local' : 'remote';
+                const key = device.device_key || device.ip;
+                if (state.selectedDevices.has(key)) {
+                    card.classList.add('is-selected');
+                }
+            });
+        }
+
+        const __origRenderDevices = renderDevices;
+        renderDevices = function patchedRenderDevices() {
+            elements.devicesGrid.classList.toggle('compact', uiPrefs.density === 'compact');
+
+            if (!state.devices.length) {
+                elements.devicesGrid.innerHTML = `
+                    <div class="empty">
+                        <h3>等待设备上线</h3>
+                        <p>确保设备与 Dashboard 主机在同一网段，并放通 UDP 9999。</p>
+                    </div>
+                `;
+                if (elements.visibleCount) elements.visibleCount.textContent = '0';
+                return;
+            }
+
+            const baseVisible = getVisibleDevices();
+            const displayed = applyDisplayPipeline(baseVisible);
+
+            if (!displayed.length) {
+                const term = (uiPrefs.search || '').trim();
+                const heading = term ? '没有匹配的设备' : '当前筛选没有设备';
+                const body = term
+                    ? `没有设备同时匹配「${escapeHtml(term)}」与当前筛选。`
+                    : '切换到其他型号 / 位置分类，或等待该类型设备上线。';
+                elements.devicesGrid.innerHTML = `<div class="empty"><h3>${heading}</h3><p>${body}</p></div>`;
+                if (elements.visibleCount) elements.visibleCount.textContent = '0';
+                return;
+            }
+
+            elements.devicesGrid.innerHTML = displayed.map(renderDevice).join('');
+            decorateDeviceCards(displayed);
+            if (elements.visibleCount) elements.visibleCount.textContent = String(displayed.length);
+        };
+
+        const __origRenderSummary = renderSummary;
+        renderSummary = function patchedRenderSummary(summary) {
+            __origRenderSummary(summary);
+            const cards = elements.summaryGrid.children;
+            if (cards.length >= 4) {
+                if (Number(summary.high_cpu_count) > 0) {
+                    cards[2].dataset.tone = 'danger';
+                } else {
+                    delete cards[2].dataset.tone;
+                }
+                const avgCpu = Number(summary.avg_cpu_usage_percent);
+                if (!Number.isNaN(avgCpu) && avgCpu >= 70) {
+                    cards[1].dataset.tone = 'warn';
+                } else {
+                    delete cards[1].dataset.tone;
+                }
+                cards[3].dataset.tone = 'info';
+            }
+        };
+
+        const __origSyncSelectedCount = syncSelectedCount;
+        syncSelectedCount = function patchedSyncSelectedCount() {
+            __origSyncSelectedCount();
+            const displayed = applyDisplayPipeline(getVisibleDevices());
+            if (elements.visibleCount) elements.visibleCount.textContent = String(displayed.length);
+        };
+
+        const __origSelectAllDevices = selectAllDevices;
+        selectAllDevices = function patchedSelectAllDevices() {
+            const displayed = applyDisplayPipeline(getVisibleDevices())
+                .filter((device) => device.source_kind === 'local');
+            if (!displayed.length) {
+                __origSelectAllDevices();
+                return;
+            }
+            displayed.forEach((device) => state.selectedDevices.add(device.device_key));
+            renderDevices();
+            syncSelectedCount();
+            if (elements.updateModal.classList.contains('open')) {
+                refreshUpdateSelectionPreview();
+            }
+        };
+
+        // Search
+        let __searchDebounce = null;
+        function setSearchValue(value, focusInput) {
+            ui.search.value = value;
+            uiPrefs.search = value;
+            ui.searchWrap.classList.toggle('has-value', String(value || '').length > 0);
+            if (focusInput) ui.search.focus();
+            renderDevices();
+            syncSelectedCount();
+        }
+        ui.search.addEventListener('input', () => {
+            const value = ui.search.value || '';
+            uiPrefs.search = value;
+            ui.searchWrap.classList.toggle('has-value', value.length > 0);
+            clearTimeout(__searchDebounce);
+            __searchDebounce = setTimeout(() => {
+                renderDevices();
+                syncSelectedCount();
+            }, 90);
+        });
+        ui.search.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                if (ui.search.value) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setSearchValue('', true);
+                } else {
+                    ui.search.blur();
+                }
+            }
+        });
+        ui.searchClear.addEventListener('click', () => setSearchValue('', true));
+
+        // Sort
+        ui.sort.value = uiPrefs.sort;
+        ui.sort.addEventListener('change', () => {
+            uiPrefs.sort = ui.sort.value;
+            persistUiPrefs();
+            renderDevices();
+        });
+
+        // Density
+        function applyDensity(density) {
+            uiPrefs.density = density === 'compact' ? 'compact' : 'comfortable';
+            persistUiPrefs();
+            elements.devicesGrid.classList.toggle('compact', uiPrefs.density === 'compact');
+            ui.densityComfortable.classList.toggle('active', uiPrefs.density === 'comfortable');
+            ui.densityCompact.classList.toggle('active', uiPrefs.density === 'compact');
+        }
+        ui.densityComfortable.addEventListener('click', () => applyDensity('comfortable'));
+        ui.densityCompact.addEventListener('click', () => applyDensity('compact'));
+        applyDensity(uiPrefs.density);
+
+        // Click outside modal shell to close
+        function bindOverlayClose(modalEl, closeFn) {
+            if (!modalEl) return;
+            let downOnOverlay = false;
+            modalEl.addEventListener('mousedown', (event) => {
+                downOnOverlay = event.target === modalEl;
+            });
+            modalEl.addEventListener('mouseup', (event) => {
+                if (downOnOverlay && event.target === modalEl) {
+                    event.preventDefault();
+                    closeFn();
+                }
+                downOnOverlay = false;
+            });
+        }
+        bindOverlayClose(elements.detailModal, closeDeviceDetail);
+        bindOverlayClose(elements.updateModal, closeUpdateModal);
+        bindOverlayClose(elements.remoteModal, closeRemoteModal);
+        bindOverlayClose(elements.modal, closeModal);
+
+        // Press '/' anywhere to focus search; supports '?' as alias
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== '/' && event.key !== '?') return;
+            const target = event.target;
+            const tag = (target && target.tagName) || '';
+            if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+            if (target && target.isContentEditable) return;
+            const anyModalOpen = ['detail-modal', 'update-modal', 'remote-modal', 'terminal-modal']
+                .some((id) => {
+                    const el = document.getElementById(id);
+                    return el && el.classList.contains('open');
+                });
+            if (anyModalOpen) return;
+            event.preventDefault();
+            ui.search.focus();
+            ui.search.select();
+        });
+        /* ====== /UI enhancements ====== */
 
         syncSelectedCount();
         syncDetailEditorButtons();
