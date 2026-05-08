@@ -2001,6 +2001,272 @@
         }
 
         /* ========================================================== */
+
+        /* ===================================================
+           Update modal v2 — sectioned layout + sticky actions
+        ==================================================== */
+        .update-shell-v2 {
+            grid-template-rows: auto 1fr auto;
+        }
+
+        .update-body-v2 {
+            padding: 18px 22px 18px;
+            overflow: auto;
+            display: grid;
+            gap: 18px;
+            grid-auto-rows: min-content;
+        }
+
+        .update-section {
+            display: grid;
+            gap: 10px;
+            padding: 14px 16px 16px;
+            border-radius: var(--r-lg);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.66);
+        }
+
+        .update-section > .update-section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin: 0;
+        }
+
+        .update-section-head h4 {
+            margin: 0;
+            font-size: 14px;
+            color: var(--ink);
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .update-section-head h4::before {
+            content: "";
+            width: 4px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: var(--r-pill);
+        }
+
+        .update-section-hint {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+            flex: 1 1 240px;
+            text-align: right;
+        }
+
+        .update-grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .update-grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .update-targets-grid label,
+        .update-auth-grid .auth-block label {
+            display: grid;
+            gap: 5px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .update-targets-grid textarea {
+            min-height: 86px;
+            resize: vertical;
+            font: 13px/1.45 "IBM Plex Mono", monospace;
+            padding: 9px 11px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--line);
+            background: var(--bg-input);
+            color: var(--ink);
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .update-targets-grid textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: var(--focus-ring);
+        }
+
+        .auth-block {
+            display: grid;
+            gap: 10px;
+            padding: 12px;
+            border-radius: var(--r-md);
+            border: 1px solid var(--line-soft);
+            background: rgba(255, 252, 245, 0.74);
+        }
+
+        .auth-block-head {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--ink);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .auth-block input,
+        .auth-block textarea {
+            width: 100%;
+            padding: 9px 11px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--line);
+            background: var(--bg-input);
+            color: var(--ink);
+            font-size: 13px;
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .auth-block textarea {
+            min-height: 96px;
+            resize: vertical;
+            font: 13px/1.45 "IBM Plex Mono", monospace;
+        }
+
+        .auth-block input:focus,
+        .auth-block textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: var(--focus-ring);
+        }
+
+        .update-options-row {
+            display: grid;
+            grid-template-columns: minmax(180px, 1.4fr) minmax(90px, 0.5fr) minmax(220px, 1.6fr) minmax(220px, 1.4fr);
+            gap: 12px;
+            align-items: end;
+        }
+
+        .opt-field {
+            display: grid;
+            gap: 5px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .opt-field input,
+        .opt-field select {
+            width: 100%;
+            padding: 9px 11px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--line);
+            background: var(--bg-input);
+            color: var(--ink);
+            font-size: 13px;
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .opt-field input:focus,
+        .opt-field select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: var(--focus-ring);
+        }
+
+        .opt-toggles {
+            display: grid;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .opt-check {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--ink);
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .opt-check input {
+            margin: 0;
+            width: 14px;
+            height: 14px;
+            accent-color: var(--accent);
+        }
+
+        .update-status-block {
+            padding: 10px 12px;
+            border-radius: var(--r-sm);
+            background: rgba(20, 30, 40, 0.04);
+            border: 1px solid var(--line-soft);
+        }
+
+        .update-actions-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 12px 22px;
+            border-top: 1px solid var(--line);
+            background: rgba(255, 252, 245, 0.94);
+            backdrop-filter: blur(8px);
+        }
+
+        .update-actions-hint {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+            flex: 1 1 240px;
+        }
+
+        .update-actions-buttons {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .update-actions-buttons button {
+            min-width: 120px;
+        }
+
+        @media (max-width: 1080px) {
+            .update-grid-3 {
+                grid-template-columns: 1fr 1fr;
+            }
+            .update-auth-grid .auth-block:last-child {
+                grid-column: 1 / -1;
+            }
+            .update-options-row {
+                grid-template-columns: 1fr 1fr;
+            }
+            .update-options-row .opt-toggles {
+                grid-column: 1 / -1;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px 16px;
+            }
+        }
+
+        @media (max-width: 760px) {
+            .update-grid-2,
+            .update-grid-3,
+            .update-options-row {
+                grid-template-columns: 1fr;
+            }
+            .update-section-hint { text-align: left; }
+            .update-actions-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .update-actions-buttons {
+                justify-content: space-between;
+            }
+            .update-actions-buttons button { flex: 1 1 auto; min-width: 0; }
+        }
     </style>
 </head>
 <body>
@@ -2204,7 +2470,7 @@
     </div>
 
     <div class="update-modal" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="update-heading">
-        <div class="update-shell">
+        <div class="update-shell update-shell-v2">
             <div class="update-top">
                 <div>
                     <h3 id="update-heading">群发更新</h3>
@@ -2212,111 +2478,115 @@
                 </div>
                 <button class="btn-secondary" id="btn-update-close" type="button">关闭</button>
             </div>
-            <div class="update-body">
-                <div class="update-grid">
-                    <div class="update-card">
-                        <h4>更新策略</h4>
-                        <div class="update-form-grid">
-                            <label>
-                                传输方式
-                                <select id="update-strategy">
-                                    <option value="auto">自动: 先 SSH 后 Telnet</option>
-                                    <option value="ssh">只用 SSH</option>
-                                    <option value="telnet">只用 Telnet</option>
-                                </select>
-                            </label>
-                            <label>
-                                并发数
-                                <input id="update-parallelism" type="number" min="1" max="{{ update_max_parallel }}" value="2">
-                            </label>
-                        </div>
-                        <div class="update-inline">
-                            <label class="remember">
-                                <input id="update-remember" type="checkbox" checked>
-                                记住本页更新凭据（当前浏览器）
-                            </label>
-                            <label class="remember">
-                                <input id="update-use-sudo" type="checkbox" checked>
-                                非 root 时尝试 sudo 安装
-                            </label>
-                        </div>
-                        <label>
-                            sudo 密码
-                            <input id="update-sudo-password" type="text" placeholder="留空则默认使用登录密码">
-                        </label>
-                    </div>
-                    <div class="update-card">
+
+            <div class="update-body update-body-v2">
+                <!-- 1. Targets -->
+                <section class="update-section">
+                    <header class="update-section-head">
                         <h4>目标设备</h4>
-                        <div class="update-targets" id="update-targets"></div>
-                        <label>
-                            网段扫描
-                            <textarea id="update-subnet-targets" placeholder="10.126.35.x&#10;10.126.36.0/24"></textarea>
-                        </label>
-                        <div class="update-note">支持 `10.126.35.x`、`10.126.35.*`、`10.126.35.0/24` 或 `10.126.35`，会自动展开为 `1-255` 并逐台尝试 SSH / Telnet 登录。</div>
+                        <span class="update-section-hint">在线已选 + 手动 IP + 网段扫描，三类目标会一起执行</span>
+                    </header>
+                    <div class="update-targets" id="update-targets"></div>
+                    <div class="update-grid-2 update-targets-grid">
                         <label>
                             手动输入 IP / 主机
                             <textarea id="update-manual-targets" placeholder="10.126.33.210&#10;10.126.33.211"></textarea>
+                            <span class="update-note">适合单台首装或补充主机名。会与已选设备、网段结果一起执行自动安装 / 更新。</span>
                         </label>
-                        <div class="update-note">适合单台首装或补充主机名。会和当前已选在线设备、网段扫描结果一起执行自动安装 / 更新。</div>
-                        <div class="update-status" id="update-status">尚未启动更新任务。</div>
-                        <div class="update-inline">
-                            <button class="btn-primary" id="btn-update-start" type="button">开始安装 / 更新</button>
-                            <button class="btn-secondary" id="btn-update-refresh" type="button">刷新结果</button>
+                        <label>
+                            网段扫描
+                            <textarea id="update-subnet-targets" placeholder="10.126.35.x&#10;10.126.36.0/24"></textarea>
+                            <span class="update-note">支持 `10.126.35.x` / `*` / `0/24` / `10.126.35`，自动展开 1-255 并逐台 SSH / Telnet 探测。</span>
+                        </label>
+                    </div>
+                </section>
+
+                <!-- 2. Authentication -->
+                <section class="update-section">
+                    <header class="update-section-head">
+                        <h4>认证</h4>
+                        <span class="update-section-hint">SSH 与 Telnet 留空时会互相继承。多组候选在主凭据失败后按顺序尝试。</span>
+                    </header>
+                    <div class="update-grid-3 update-auth-grid">
+                        <div class="auth-block">
+                            <div class="auth-block-head">SSH</div>
+                            <div class="update-grid-2">
+                                <label>用户名 <input id="update-ssh-user" placeholder="默认使用设备上报用户"></label>
+                                <label>端口 <input id="update-ssh-port" type="number" value="22"></label>
+                            </div>
+                            <label>密码 <input id="update-ssh-password" type="text" placeholder="留空则尝试本机 SSH key / agent"></label>
+                        </div>
+                        <div class="auth-block">
+                            <div class="auth-block-head">Telnet</div>
+                            <div class="update-grid-2">
+                                <label>用户名 <input id="update-telnet-user" placeholder="可留空"></label>
+                                <label>端口 <input id="update-telnet-port" type="number" value="23"></label>
+                            </div>
+                            <label>密码 <input id="update-telnet-password" type="text" placeholder="按需填写"></label>
+                        </div>
+                        <div class="auth-block">
+                            <div class="auth-block-head">多组账号 / 密码候选</div>
+                            <label>
+                                候选列表
+                                <textarea id="update-credential-candidates" placeholder="root 123456&#10;admin:admin&#10;user,password"></textarea>
+                            </label>
+                            <span class="update-note">每行一组：`用户名 空格 密码` / `用户名:密码` / `用户名,密码`。</span>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <div class="update-grid">
-                    <div class="update-card">
-                        <h4>SSH</h4>
-                        <div class="update-form-grid">
-                            <label>
-                                用户名
-                                <input id="update-ssh-user" placeholder="默认使用设备上报用户">
+                <!-- 3. Strategy / options -->
+                <section class="update-section">
+                    <header class="update-section-head">
+                        <h4>策略</h4>
+                        <span class="update-section-hint">控制传输方式、并发，以及是否在非 root 时使用 sudo。</span>
+                    </header>
+                    <div class="update-options-row">
+                        <label class="opt-field">
+                            <span>传输方式</span>
+                            <select id="update-strategy">
+                                <option value="auto">自动: 先 SSH 后 Telnet</option>
+                                <option value="ssh">只用 SSH</option>
+                                <option value="telnet">只用 Telnet</option>
+                            </select>
+                        </label>
+                        <label class="opt-field opt-narrow">
+                            <span>并发数</span>
+                            <input id="update-parallelism" type="number" min="1" max="{{ update_max_parallel }}" value="2">
+                        </label>
+                        <label class="opt-field">
+                            <span>sudo 密码</span>
+                            <input id="update-sudo-password" type="text" placeholder="留空则使用登录密码">
+                        </label>
+                        <div class="opt-toggles">
+                            <label class="opt-check">
+                                <input id="update-remember" type="checkbox" checked>
+                                <span>记住凭据（本浏览器）</span>
                             </label>
-                            <label>
-                                端口
-                                <input id="update-ssh-port" type="number" value="22">
-                            </label>
-                            <label>
-                                密码
-                                <input id="update-ssh-password" type="text" placeholder="留空则尝试本机 SSH key/agent">
+                            <label class="opt-check">
+                                <input id="update-use-sudo" type="checkbox" checked>
+                                <span>非 root 时尝试 sudo</span>
                             </label>
                         </div>
-                        <div class="update-note">如果 Telnet 用户名 / 密码留空，会自动继承这里填写的用户名 / 密码。</div>
                     </div>
-                    <div class="update-card">
-                        <h4>Telnet</h4>
-                        <div class="update-form-grid">
-                            <label>
-                                用户名
-                                <input id="update-telnet-user" placeholder="可留空">
-                            </label>
-                            <label>
-                                端口
-                                <input id="update-telnet-port" type="number" value="23">
-                            </label>
-                            <label>
-                                密码
-                                <input id="update-telnet-password" type="text" placeholder="按需填写">
-                            </label>
-                        </div>
-                        <div class="update-note">如果这里留空，会自动回退到 SSH 区填写的用户名 / 密码。</div>
-                    </div>
-                </div>
+                </section>
 
-                <div class="update-card">
-                    <h4>多组账号密码</h4>
-                    <label>
-                        候选列表
-                        <textarea id="update-credential-candidates" placeholder="root 123456&#10;admin:admin&#10;user,password"></textarea>
-                    </label>
-                    <div class="update-note">按行尝试多组用户名 / 密码。支持 `用户名 空格 密码`、`用户名:密码`、`用户名,密码`。会在当前 SSH / Telnet 默认凭据之后继续尝试。</div>
-                </div>
-
-                <div class="update-card">
-                    <h4>任务结果</h4>
+                <!-- 4. Results -->
+                <section class="update-section">
+                    <header class="update-section-head">
+                        <h4>任务结果</h4>
+                        <span class="update-section-hint" id="update-status-inline">任务启动后实时显示扫描进度与各台设备状态</span>
+                    </header>
+                    <div class="update-status update-status-block" id="update-status">尚未启动更新任务。</div>
                     <div class="update-results" id="update-results"></div>
+                </section>
+            </div>
+
+            <div class="update-actions-bar">
+                <div class="update-actions-hint" id="update-actions-hint">需要至少一个目标：勾选在线设备、填写手动 IP / 网段任一即可。</div>
+                <div class="update-actions-buttons">
+                    <button class="btn-secondary" id="btn-update-refresh" type="button">刷新结果</button>
+                    <button class="btn-primary" id="btn-update-start" type="button">开始 安装 / 更新</button>
                 </div>
             </div>
         </div>
@@ -5146,8 +5416,11 @@
             displayed: [],
         };
 
+        // HTML attribute escape. Safe for both `data-...` attributes and aria-labels.
+        // Action handlers below use event delegation rather than inline onclick string
+        // injection, so we do not need any JS-string escaping.
         function v2EscapeAttr(value) {
-            return escapeHtml(String(value || '')).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            return escapeHtml(String(value || ''));
         }
 
         function v2RenderMetaSubtitle(device) {
@@ -5179,16 +5452,14 @@
             return parts.map((p) => `<span>${p}</span>`).join('');
         }
 
-        function v2RenderActions(device, deviceKey) {
+        function v2RenderActions(device) {
             const isLocal = (device.source_kind || 'local') === 'local';
-            const keyAttr = v2EscapeAttr(deviceKey);
-            const ipAttr = v2EscapeAttr(device.ip || '');
             const primary = isLocal
-                ? `<button class="btn-primary btn-sm" data-card-action onclick="event.stopPropagation(); openTerminal('${keyAttr}')">终端</button>`
-                : `<button class="btn-secondary btn-sm" data-card-action onclick="event.stopPropagation(); openRemoteDashboard('${keyAttr}')">远程</button>`;
-            const copyBtn = `<button class="btn-secondary btn-sm icon-btn" data-card-action title="复制 IP" aria-label="复制 IP" onclick="event.stopPropagation(); copyText('${ipAttr}')">⎘</button>`;
+                ? `<button class="btn-primary btn-sm" data-card-action data-action="terminal" type="button">终端</button>`
+                : `<button class="btn-secondary btn-sm" data-card-action data-action="remote" type="button">远程</button>`;
+            const copyBtn = `<button class="btn-secondary btn-sm icon-btn" data-card-action data-action="copy-ip" type="button" title="复制 IP" aria-label="复制 IP">⎘</button>`;
             const clearBtn = device.hasLocalCredential
-                ? `<button class="btn-ghost btn-sm icon-btn" data-card-action title="清除本机 Telnet 密码" aria-label="清除本机 Telnet 密码" onclick="event.stopPropagation(); clearPassword('${keyAttr}')">×</button>`
+                ? `<button class="btn-ghost btn-sm icon-btn" data-card-action data-action="clear-pwd" type="button" title="清除本机 Telnet 密码" aria-label="清除本机 Telnet 密码">×</button>`
                 : '';
             return `${primary}${copyBtn}${clearBtn}`;
         }
@@ -5199,18 +5470,19 @@
             const selected = state.selectedDevices.has(deviceKey);
             const isNew = isDeviceNew(device);
             const keyAttr = v2EscapeAttr(deviceKey);
+            const ipAttr = v2EscapeAttr(device.ip || '');
             const selectControl = isLocal
-                ? `<label class="device-select" data-card-action title="勾选以参与批量更新" onclick="event.stopPropagation();">
-                       <input type="checkbox" ${selected ? 'checked' : ''} data-card-toggle data-key="${keyAttr}" onchange="toggleDeviceSelection('${keyAttr}', this.checked)">
+                ? `<label class="device-select" data-card-action title="勾选以参与批量更新">
+                       <input type="checkbox" ${selected ? 'checked' : ''} data-card-toggle aria-label="选择 ${escapeHtml(device.display_name || device.ip || '')}">
                    </label>`
                 : '<span class="device-select readonly" title="远程设备只读">只读</span>';
 
             return `
                 <article class="device-card${selected ? ' is-selected' : ''}${isNew ? ' has-new' : ''}"
                          data-key="${keyAttr}"
+                         data-ip="${ipAttr}"
                          data-source="${isLocal ? 'local' : 'remote'}"
                          tabindex="0"
-                         role="button"
                          aria-label="${escapeHtml(device.display_name || device.ip || '')} 详情">
                     ${isNew ? '<div class="new-badge">NEW</div>' : ''}
                     <div class="device-head">
@@ -5224,7 +5496,7 @@
                     <div class="metrics-grid">${renderMetricSet(device)}</div>
                     <div class="device-foot">
                         <div class="device-foot-meta">${v2RenderFootMeta(device)}</div>
-                        <div class="device-foot-actions">${v2RenderActions(device, deviceKey)}</div>
+                        <div class="device-foot-actions">${v2RenderActions(device)}</div>
                     </div>
                 </article>
             `;
@@ -5246,11 +5518,39 @@
             });
         };
 
+        // Card action buttons via event delegation. Avoids inline onclick string injection
+        // and keeps the rendered HTML free of executable JS strings.
+        elements.devicesGrid.addEventListener('click', (event) => {
+            const actionBtn = event.target.closest('[data-action]');
+            if (!actionBtn) return;
+            event.stopPropagation();
+            const card = actionBtn.closest('.device-card');
+            if (!card) return;
+            const key = card.dataset.key || '';
+            const ip = card.dataset.ip || '';
+            switch (actionBtn.dataset.action) {
+                case 'terminal':  if (key) openTerminal(key); break;
+                case 'remote':    if (key) openRemoteDashboard(key); break;
+                case 'copy-ip':   if (ip) copyText(ip); break;
+                case 'clear-pwd': if (key) clearPassword(key); break;
+            }
+        });
+
+        // Checkbox toggle via event delegation (replaces inline onchange)
+        elements.devicesGrid.addEventListener('change', (event) => {
+            const cb = event.target.closest('input[data-card-toggle]');
+            if (!cb) return;
+            const card = cb.closest('.device-card');
+            if (!card) return;
+            const key = card.dataset.key || '';
+            if (key) toggleDeviceSelection(key, cb.checked);
+        });
+
         // Whole-card click → detail (skip clicks on actions / checkbox / labels)
         elements.devicesGrid.addEventListener('click', (event) => {
             const card = event.target.closest('.device-card');
             if (!card) return;
-            if (event.target.closest('[data-card-action], button, input, label, a')) return;
+            if (event.target.closest('[data-card-action], [data-action], button, input, label, a')) return;
             const key = card.dataset.key;
             if (!key) return;
             openDeviceDetail(key);
@@ -5319,9 +5619,12 @@
                 });
             if (anyModalOpen) return;
             event.preventDefault();
+            const visibleLocal = applyDisplayPipeline(getVisibleDevices())
+                .filter((device) => device.source_kind === 'local').length;
             selectAllDevices();
-            const count = state.selectedDevices.size;
-            showToast(count ? `已全选 ${count} 台可见设备` : '当前没有可选的本地设备');
+            showToast(visibleLocal
+                ? `已全选 ${visibleLocal} 台可见本地设备`
+                : '当前没有可选的本地设备');
         });
 
         // Hide the site filter section entirely when there's only one site (i.e., only "本地")
