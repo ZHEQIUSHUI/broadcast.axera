@@ -2434,6 +2434,35 @@
             color: #fff;
         }
 
+        /* ===================================================
+           Connection-lost banner
+        ==================================================== */
+        .connection-lost-banner {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 250;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 16px;
+            border-radius: var(--r-pill);
+            background: var(--danger);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 16px 38px rgba(181, 66, 49, 0.32);
+            animation: shellIn 0.18s ease;
+        }
+        .connection-lost-banner[hidden] { display: none; }
+        .connection-lost-banner .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #fff;
+            animation: pulse 1.4s ease-in-out infinite;
+        }
+
         @media (max-width: 760px) {
             .update-job-indicator {
                 width: 100%;
@@ -4670,7 +4699,12 @@
             renderDetailModal();
         }
 
-        function closeDeviceDetail() {
+        function closeDeviceDetail(options) {
+            const force = options && options.force === true;
+            if (!force && state.detailMetadataDirty && !state.detailMetadataSaving) {
+                const proceed = window.confirm('当前设备的标题 / 备注有未保存改动，确认放弃？');
+                if (!proceed) return false;
+            }
             state.detailDeviceKey = null;
             state.detailDraftKey = null;
             state.detailDraftTitle = '';
@@ -4679,6 +4713,7 @@
             state.detailMetadataSaving = false;
             setDetailEditorStatus('');
             elements.detailModal.classList.remove('open');
+            return true;
         }
 
         async function refreshDevices() {
@@ -6470,8 +6505,96 @@
         syncSelectedCount();
         syncDetailEditorButtons();
         renderUpdateJob(null);
+
+        /* ====== Visibility-aware refresh scheduler + connection-lost banner ====== */
+        const REFRESH_INTERVAL_ACTIVE = 2000;
+        const REFRESH_INTERVAL_HIDDEN = 15000;
+        const CONNECTION_LOST_THRESHOLD = 3;
+        let __refreshTimer = null;
+        let __refreshFailCount = 0;
+        let __connectionLostBanner = null;
+
+        function ensureConnectionLostBanner() {
+            if (__connectionLostBanner) return __connectionLostBanner;
+            const el = document.createElement('div');
+            el.id = 'connection-lost-banner';
+            el.className = 'connection-lost-banner';
+            el.hidden = true;
+            el.innerHTML = '<span class="dot" aria-hidden="true"></span><span>Dashboard 暂时无法连接，正在自动重试…</span>';
+            document.body.appendChild(el);
+            __connectionLostBanner = el;
+            return el;
+        }
+        function showConnectionLostBanner() { ensureConnectionLostBanner().hidden = false; }
+        function hideConnectionLostBanner() { if (__connectionLostBanner) __connectionLostBanner.hidden = true; }
+
+        // Replace refreshDevices with a tracking version that also feeds the
+        // connection-lost banner. It supersedes both the original function and
+        // the earlier v2 wrap (which re-rendered the remote modal on success).
+        refreshDevices = async function trackedRefreshDevices() {
+            if (state.devicesRefreshing) return;
+            state.devicesRefreshing = true;
+            let ok = false;
+            try {
+                const response = await fetch('/api/devices?include_remotes=1');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const payload = await response.json();
+                state.devices = (payload.devices || []).map(annotateDeviceWithLocalCredential);
+                const onlineKeys = new Set(
+                    state.devices
+                        .filter((device) => device.source_kind === 'local')
+                        .map((device) => device.device_key)
+                        .filter(Boolean)
+                );
+                state.selectedDevices = new Set([...state.selectedDevices].filter((key) => onlineKeys.has(key)));
+                renderSummary(payload.summary || { device_count: 0, device_types: {} });
+                renderSiteFilters();
+                renderModelFilters();
+                renderDevices();
+                syncSelectedCount();
+                if (elements.updateModal.classList.contains('open')) {
+                    refreshUpdateSelectionPreview();
+                }
+                renderDetailModal();
+                if (elements.remoteModal && elements.remoteModal.classList.contains('open')) {
+                    renderRemotes();
+                }
+                ok = true;
+            } catch (_) {
+                // swallow; counted below
+            } finally {
+                state.devicesRefreshing = false;
+            }
+            if (ok) {
+                if (__refreshFailCount >= CONNECTION_LOST_THRESHOLD) hideConnectionLostBanner();
+                __refreshFailCount = 0;
+            } else {
+                __refreshFailCount += 1;
+                if (__refreshFailCount >= CONNECTION_LOST_THRESHOLD) showConnectionLostBanner();
+            }
+        };
+
+        function scheduleNextRefresh() {
+            if (__refreshTimer) clearTimeout(__refreshTimer);
+            const interval = document.hidden ? REFRESH_INTERVAL_HIDDEN : REFRESH_INTERVAL_ACTIVE;
+            __refreshTimer = setTimeout(async () => {
+                await refreshDevices();
+                scheduleNextRefresh();
+            }, interval);
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                // Visible again: refresh immediately, then resume active interval
+                refreshDevices().then(scheduleNextRefresh);
+            } else {
+                scheduleNextRefresh();
+            }
+        });
+
         refreshDevices();
-        setInterval(refreshDevices, 2000);
+        scheduleNextRefresh();
+        /* ====== /Visibility-aware refresh scheduler ====== */
 
         window.copyText = copyText;
         window.openDeviceDetail = openDeviceDetail;
