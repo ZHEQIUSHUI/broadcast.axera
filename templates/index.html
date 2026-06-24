@@ -2215,6 +2215,75 @@
             border-top: 1px solid var(--line);
             background: rgba(255, 252, 245, 0.94);
             backdrop-filter: blur(8px);
+            position: relative;
+        }
+
+        .update-history-popover {
+            position: absolute;
+            right: 22px;
+            bottom: calc(100% + 8px);
+            width: min(460px, calc(100% - 44px));
+            max-height: 340px;
+            overflow: auto;
+            background: var(--bg-panel-strong);
+            border: 1px solid var(--line);
+            border-radius: var(--r-md);
+            box-shadow: var(--shadow-3);
+            padding: 6px;
+            display: grid;
+            gap: 4px;
+            z-index: 5;
+        }
+        .update-history-popover[hidden] { display: none; }
+
+        .update-history-row {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: var(--r-sm);
+            cursor: pointer;
+            transition: background var(--transition);
+        }
+        .update-history-row:hover {
+            background: rgba(20, 30, 40, 0.05);
+        }
+        .update-history-row.is-current {
+            background: var(--accent-soft);
+        }
+        .update-history-row.is-current:hover {
+            background: var(--accent-tint);
+        }
+        .update-history-row .status-chip {
+            flex-shrink: 0;
+        }
+        .update-history-meta {
+            display: grid;
+            gap: 2px;
+            font-size: 12px;
+        }
+        .update-history-meta strong {
+            color: var(--ink);
+            font-family: "IBM Plex Mono", monospace;
+        }
+        .update-history-meta .muted {
+            color: var(--muted);
+            font-size: 11px;
+        }
+        .update-history-empty {
+            padding: 18px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        @media (max-width: 760px) {
+            .update-history-popover {
+                left: 12px;
+                right: 12px;
+                width: auto;
+            }
         }
 
         .update-actions-hint {
@@ -3246,8 +3315,10 @@
             </div>
 
             <div class="update-actions-bar">
+                <div class="update-history-popover" id="update-history-popover" hidden></div>
                 <div class="update-actions-hint" id="update-actions-hint">需要至少一个目标：勾选在线设备、填写手动 IP / 网段任一即可。</div>
                 <div class="update-actions-buttons">
+                    <button class="btn-secondary" id="btn-update-history" type="button">历史任务</button>
                     <button class="btn-secondary" id="btn-update-refresh" type="button">刷新结果</button>
                     <button class="btn-danger" id="btn-update-cancel" type="button" hidden>取消任务</button>
                     <button class="btn-primary" id="btn-update-start" type="button">开始 安装 / 更新</button>
@@ -3397,6 +3468,8 @@
             btnUpdateStart: document.getElementById('btn-update-start'),
             btnUpdateRefresh: document.getElementById('btn-update-refresh'),
             btnUpdateCancel: document.getElementById('btn-update-cancel'),
+            btnUpdateHistory: document.getElementById('btn-update-history'),
+            updateHistoryPopover: document.getElementById('update-history-popover'),
             updateSubnetTargets: document.getElementById('update-subnet-targets'),
             updateManualTargets: document.getElementById('update-manual-targets'),
             modal: document.getElementById('terminal-modal'),
@@ -5724,6 +5797,74 @@
         elements.btnUpdateCancel.addEventListener('click', () => {
             if (!state.updateJobId) return;
             cancelUpdateJob(state.updateJobId);
+        });
+
+        async function renderUpdateHistoryPopover() {
+            const pop = elements.updateHistoryPopover;
+            pop.innerHTML = '<div class="update-history-empty">加载中…</div>';
+            try {
+                const response = await fetch('/api/update/jobs');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const payload = await response.json();
+                const jobs = (payload.jobs || []);
+                if (!jobs.length) {
+                    pop.innerHTML = '<div class="update-history-empty">暂无历史任务</div>';
+                    return;
+                }
+                const now = Date.now() / 1000;
+                const rows = jobs.map((j) => {
+                    const ago = j.created_at ? formatRelativeAgo(now - j.created_at) : '';
+                    const statusClass = updateStatusClass(j.status);
+                    const statusLabel = updateStatusLabel(j.status);
+                    const isCurrent = state.updateJobId === j.job_id;
+                    const stats = `成功 ${j.success_count || 0} · 跳过 ${j.skipped_count || 0} · 失败 ${j.failed_count || 0}`;
+                    return `<div class="update-history-row${isCurrent ? ' is-current' : ''}" data-job-id="${escapeHtml(j.job_id)}">
+                        <span class="status-chip ${statusClass}">${escapeHtml(statusLabel)}</span>
+                        <div class="update-history-meta">
+                            <span><strong>${j.target_count || 0}</strong> 台 · ${escapeHtml(stats)}</span>
+                            <span class="muted">${escapeHtml(ago)}${isCurrent ? ' · 当前' : ''}</span>
+                        </div>
+                    </div>`;
+                }).join('');
+                pop.innerHTML = rows;
+            } catch (e) {
+                pop.innerHTML = '<div class="update-history-empty">加载失败</div>';
+            }
+        }
+
+        function closeUpdateHistoryPopover() {
+            elements.updateHistoryPopover.hidden = true;
+        }
+
+        elements.btnUpdateHistory.addEventListener('click', async () => {
+            const pop = elements.updateHistoryPopover;
+            if (!pop.hidden) {
+                pop.hidden = true;
+                return;
+            }
+            pop.hidden = false;
+            await renderUpdateHistoryPopover();
+        });
+
+        elements.updateHistoryPopover.addEventListener('click', async (event) => {
+            const row = event.target.closest('[data-job-id]');
+            if (!row) return;
+            const jobId = row.dataset.jobId;
+            if (!jobId) return;
+            closeUpdateHistoryPopover();
+            state.updateJobId = jobId;
+            const job = await fetchUpdateJobStatus(jobId, false);
+            if (job && jobIsActive(job.status)) {
+                pollUpdateJob(jobId);
+            }
+        });
+
+        // Click outside the popover or the toggle button closes it
+        document.addEventListener('mousedown', (event) => {
+            const pop = elements.updateHistoryPopover;
+            if (pop.hidden) return;
+            if (event.target.closest('#update-history-popover') || event.target.closest('#btn-update-history')) return;
+            closeUpdateHistoryPopover();
         });
         elements.updateSubnetTargets.addEventListener('input', refreshUpdateSelectionPreview);
         elements.updateManualTargets.addEventListener('input', refreshUpdateSelectionPreview);
