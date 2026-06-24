@@ -6600,6 +6600,145 @@
             setRemoteEnabled(id, cb.checked);
         });
 
+        /* ====== Diff-based device list render ====== */
+        function deviceCardFingerprint(device) {
+            return [
+                (device.source_kind || 'local'),
+                device.is_ax ? 'ax' : '',
+                device.gpu_present ? 'g' : '',
+                device.is_ax && device.cmm_total_kb !== null && device.cmm_total_kb !== undefined ? 'c' : '',
+                device.is_ax && device.chip_type ? 'ct' : '',
+                device.is_ax && device.version ? 'v' : '',
+                device.custom_note ? 'n' : '',
+                device.hasLocalCredential ? 'tn' : '',
+                isDeviceNew(device) ? 'new' : '',
+            ].join('|');
+        }
+
+        function ensureCardInPosition(card, prev, grid) {
+            const expected = prev ? prev.nextElementSibling : grid.firstElementChild;
+            if (expected === card) return;
+            if (prev) prev.insertAdjacentElement('afterend', card);
+            else grid.insertAdjacentElement('afterbegin', card);
+        }
+
+        function annotateCardAttributes(card, device, idx) {
+            card.dataset.idx = String(idx);
+            const health = deviceHealthLevel(device);
+            if (health) card.dataset.health = health;
+            else delete card.dataset.health;
+            card.dataset.source = (device.source_kind || 'local') === 'local' ? 'local' : 'remote';
+            const key = device.device_key || device.ip;
+            card.classList.toggle('is-selected', state.selectedDevices.has(key));
+        }
+
+        function updateCardInPlace(card, device) {
+            const titleEl = card.querySelector('.device-title h2');
+            if (titleEl) {
+                const expected = device.display_name || device.ip || 'Unknown';
+                if (titleEl.textContent !== expected) titleEl.textContent = expected;
+            }
+            const subEl = card.querySelector('.device-subtitle');
+            if (subEl) subEl.innerHTML = v2RenderMetaSubtitle(device);
+            // Custom note: present in fingerprint, but text content may change
+            const noteEl = card.querySelector('.device-note-preview');
+            if (noteEl) {
+                const expected = device.custom_note || '';
+                if (noteEl.textContent !== expected) noteEl.textContent = expected;
+            }
+            const metrics = card.querySelector('.metrics-grid');
+            if (metrics) metrics.innerHTML = renderMetricSet(device);
+            const meta = card.querySelector('.device-foot-meta');
+            if (meta) meta.innerHTML = v2RenderFootMeta(device);
+            const actions = card.querySelector('.device-foot-actions');
+            if (actions) actions.innerHTML = v2RenderActions(device);
+            // Selection checkbox should reflect state without losing focus
+            const cb = card.querySelector('input[data-card-toggle]');
+            if (cb) {
+                const key = device.device_key || device.ip;
+                const should = state.selectedDevices.has(key);
+                if (cb.checked !== should) cb.checked = should;
+            }
+        }
+
+        renderDevices = function diffRenderDevices() {
+            const grid = elements.devicesGrid;
+            grid.classList.toggle('compact', uiPrefs.density === 'compact');
+
+            if (!state.devices.length) {
+                grid.innerHTML = `
+                    <div class="empty">
+                        <h3>等待设备上线</h3>
+                        <p>确保设备与 Dashboard 主机在同一网段，并放通 UDP 9999。</p>
+                    </div>
+                `;
+                if (elements.visibleCount) elements.visibleCount.textContent = '0';
+                return;
+            }
+
+            const baseVisible = getVisibleDevices();
+            const displayed = applyDisplayPipeline(baseVisible);
+            cardJsState.displayed = displayed;
+
+            if (!displayed.length) {
+                const term = (uiPrefs.search || '').trim();
+                const heading = term ? '没有匹配的设备' : '当前筛选没有设备';
+                const body = term
+                    ? `没有设备同时匹配「${escapeHtml(term)}」与当前筛选。`
+                    : '切换到其他型号 / 位置分类，或等待该类型设备上线。';
+                grid.innerHTML = `<div class="empty"><h3>${heading}</h3><p>${body}</p></div>`;
+                if (elements.visibleCount) elements.visibleCount.textContent = '0';
+                return;
+            }
+
+            // Index existing cards by data-key. Drop anything else (empty state, etc.)
+            const existing = new Map();
+            const orphans = [];
+            Array.from(grid.children).forEach((node) => {
+                const key = node.dataset && node.dataset.key;
+                if (key) existing.set(key, node);
+                else orphans.push(node);
+            });
+            orphans.forEach((n) => n.remove());
+
+            const seenKeys = new Set();
+            let prev = null;
+            displayed.forEach((device, idx) => {
+                const key = device.device_key || device.ip;
+                seenKeys.add(key);
+                let card = existing.get(key);
+                if (!card) {
+                    const wrap = document.createElement('div');
+                    wrap.innerHTML = renderDevice(device).trim();
+                    card = wrap.firstElementChild;
+                    card.dataset.fp = deviceCardFingerprint(device);
+                } else {
+                    const fp = deviceCardFingerprint(device);
+                    if (card.dataset.fp !== fp) {
+                        const wrap = document.createElement('div');
+                        wrap.innerHTML = renderDevice(device).trim();
+                        const next = wrap.firstElementChild;
+                        next.dataset.fp = fp;
+                        card.replaceWith(next);
+                        card = next;
+                    } else {
+                        updateCardInPlace(card, device);
+                    }
+                }
+                annotateCardAttributes(card, device, idx);
+                ensureCardInPosition(card, prev, grid);
+                prev = card;
+            });
+
+            // Remove cards that fell out of the displayed set
+            existing.forEach((node, key) => {
+                if (!seenKeys.has(key)) node.remove();
+            });
+
+            if (elements.visibleCount) elements.visibleCount.textContent = String(displayed.length);
+        };
+        /* ====== /Diff-based device list render ====== */
+
         /* ====== Summary card sparklines ====== */
         const SUMMARY_HISTORY_LIMIT = 60;   // ~2min at the active 2s cadence
         const summaryHistory = [];
