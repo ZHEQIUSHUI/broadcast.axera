@@ -2367,6 +2367,26 @@
             color: var(--muted-soft);
             font-style: italic;
         }
+        .remote-tag-ok {
+            background: var(--accent-soft);
+            color: var(--accent);
+            border-color: var(--accent-tint);
+        }
+        .remote-tag-bad {
+            background: var(--danger-soft);
+            color: var(--danger);
+            border-color: rgba(181, 66, 49, 0.22);
+        }
+        .remote-tag .reach-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: currentColor;
+            display: inline-block;
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+        }
+        .remote-tag-ok .reach-dot {
+            animation: pulse 1.8s ease-in-out infinite;
+        }
 
         /* ===================================================
            Background update-job indicator (lives in batch bar)
@@ -6313,20 +6333,46 @@
             return stats;
         }
 
-        function renderRemoteStatsBlock(stat, enabled) {
+        function formatRelativeAgo(seconds) {
+            if (!isFinite(seconds) || seconds < 0) return '刚刚';
+            if (seconds < 1)     return '刚刚';
+            if (seconds < 60)    return `${Math.round(seconds)} 秒前`;
+            if (seconds < 3600)  return `${Math.round(seconds / 60)} 分钟前`;
+            if (seconds < 86400) return `${Math.round(seconds / 3600)} 小时前`;
+            return `${Math.round(seconds / 86400)} 天前`;
+        }
+
+        function renderRemoteReachableTag(remote) {
+            const now = Date.now() / 1000;
+            const reachableAt = Number(remote.last_reachable_at || 0);
+            const errorAt = Number(remote.last_error_at || 0);
+            const attemptAt = Number(remote.last_attempt_at || 0);
+            if (!attemptAt) {
+                return '<span class="remote-tag remote-tag-muted" title="尚未发起远程同步">等待探测…</span>';
+            }
+            if (reachableAt >= errorAt && reachableAt > 0) {
+                const ago = formatRelativeAgo(now - reachableAt);
+                return `<span class="remote-tag remote-tag-ok" title="最近一次同步成功：${ago}"><span class="reach-dot"></span>在线</span>`;
+            }
+            const err = escapeHtml(remote.last_error || '不可达');
+            const ago = errorAt ? formatRelativeAgo(now - errorAt) : '';
+            return `<span class="remote-tag remote-tag-bad" title="${err}${ago ? '（' + ago + '）' : ''}"><span class="reach-dot"></span>不可达</span>`;
+        }
+
+        function renderRemoteStatsBlock(remote, stat, enabled) {
             if (!enabled) {
                 return '<div class="remote-row-tags"><span class="remote-tag remote-tag-muted">未启用</span></div>';
             }
+            const parts = [renderRemoteReachableTag(remote)];
             if (!stat || stat.total === 0) {
-                return '<div class="remote-row-tags"><span class="remote-tag remote-tag-muted">暂无在线设备</span></div>';
+                parts.push('<span class="remote-tag remote-tag-muted">暂无在线设备</span>');
+            } else {
+                parts.push(`<span class="remote-tag remote-tag-primary">设备 <strong>${stat.total}</strong></span>`);
+                if (stat.ax > 0)    parts.push(`<span class="remote-tag">AX <strong>${stat.ax}</strong></span>`);
+                if (stat.x86 > 0)   parts.push(`<span class="remote-tag">x86 <strong>${stat.x86}</strong></span>`);
+                if (stat.rpi > 0)   parts.push(`<span class="remote-tag">树莓派 <strong>${stat.rpi}</strong></span>`);
+                if (stat.other > 0) parts.push(`<span class="remote-tag">其他 <strong>${stat.other}</strong></span>`);
             }
-            const parts = [
-                `<span class="remote-tag remote-tag-primary">设备 <strong>${stat.total}</strong></span>`,
-            ];
-            if (stat.ax > 0)    parts.push(`<span class="remote-tag">AX <strong>${stat.ax}</strong></span>`);
-            if (stat.x86 > 0)   parts.push(`<span class="remote-tag">x86 <strong>${stat.x86}</strong></span>`);
-            if (stat.rpi > 0)   parts.push(`<span class="remote-tag">树莓派 <strong>${stat.rpi}</strong></span>`);
-            if (stat.other > 0) parts.push(`<span class="remote-tag">其他 <strong>${stat.other}</strong></span>`);
             return `<div class="remote-row-tags">${parts.join('')}</div>`;
         }
 
@@ -6357,7 +6403,7 @@
                         <div class="remote-row-info">
                             <div class="remote-row-label">${escapeHtml(remote.label || '远程')}</div>
                             <code class="remote-row-origin">${escapeHtml(remote.origin || '')}</code>
-                            ${renderRemoteStatsBlock(stat, enabled)}
+                            ${renderRemoteStatsBlock(remote, stat, enabled)}
                             ${note}
                         </div>
                         <div class="remote-row-actions">

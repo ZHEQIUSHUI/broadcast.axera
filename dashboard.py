@@ -616,13 +616,25 @@ def load_remote_dashboards_records():
     return normalized
 
 
+REMOTE_RUNTIME_FIELDS = (
+    "last_attempt_at",
+    "last_reachable_at",
+    "last_error",
+    "last_error_at",
+    "last_device_count",
+)
+
+
 def persist_remote_dashboards_records_locked():
+    sanitized = {}
+    for rid, rec in remote_dashboards.items():
+        sanitized[rid] = {k: v for k, v in rec.items() if k not in REMOTE_RUNTIME_FIELDS}
     atomic_write_json(
         REMOTE_DASHBOARDS_PATH,
         {
             "version": 1,
             "updated_at": now_iso(),
-            "records": remote_dashboards,
+            "records": sanitized,
         },
     )
 
@@ -984,12 +996,36 @@ def snapshot_enabled_remote_dashboards():
     return remotes
 
 
+def update_remote_status(remote_id, *, reachable, error_message=None, device_count=None):
+    """Track the live reachability state of a remote dashboard. Not persisted
+    to disk — purely an in-memory runtime annotation surfaced via /api/remotes."""
+    if not remote_id:
+        return
+    now = time.time()
+    with remote_lock:
+        record = remote_dashboards.get(remote_id)
+        if not record:
+            return
+        record["last_attempt_at"] = now
+        if reachable:
+            record["last_reachable_at"] = now
+            record["last_error"] = ""
+            record["last_error_at"] = None
+            if device_count is not None:
+                record["last_device_count"] = device_count
+        else:
+            record["last_error"] = error_message or "unreachable"
+            record["last_error_at"] = now
+
+
 def fetch_remote_devices(remote, requested_tags=None):
     origin = clean_text(remote.get("origin"))
+    remote_id = clean_text(remote.get("id"))
     if not origin:
         return []
     origin = origin.rstrip("/")
     requested_tags = requested_tags or []
+    last_error = None
 
     query_url = f"{origin}/api/devices/query"
     try:
@@ -1001,12 +1037,19 @@ def fetch_remote_devices(remote, requested_tags=None):
         )
         devices = payload.get("devices")
         if isinstance(devices, list):
+            update_remote_status(remote_id, reachable=True, device_count=len(devices))
             return devices
+        last_error = "无效响应"
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
+            last_error = f"HTTP {exc.code}"
+            update_remote_status(remote_id, reachable=False, error_message=last_error)
             return []
-    except Exception:
-        return []
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", str(exc))
+        last_error = f"网络错误: {reason}"
+    except Exception as exc:
+        last_error = f"请求失败: {exc}"
 
     devices_url = f"{origin}/api/devices"
     try:
@@ -1016,10 +1059,16 @@ def fetch_remote_devices(remote, requested_tags=None):
             for device in devices:
                 if isinstance(device, dict):
                     device.pop("history", None)
+            update_remote_status(remote_id, reachable=True, device_count=len(devices))
             return devices
-    except Exception:
-        return []
+        last_error = last_error or "无效响应"
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", str(exc))
+        last_error = f"网络错误: {reason}"
+    except Exception as exc:
+        last_error = last_error or f"请求失败: {exc}"
 
+    update_remote_status(remote_id, reachable=False, error_message=last_error or "unreachable")
     return []
 
 
