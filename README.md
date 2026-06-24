@@ -91,7 +91,7 @@ python3 -m pip install -r requirements.txt
 常用工具链下载地址（x86_64 host）：
 
 - aarch64-none-linux-gnu（glibc）：https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz
-- arm-linux-gnueabihf（glibc）：https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/arm-linux-gnueabihf/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabihf.tar.xz
+- arm-none-linux-gnueabihf（glibc）：https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-arm-none-linux-gnueabihf.tar.xz
 - riscv64-unknown-linux-gnu（glibc）：https://github.com/ZHEQIUSHUI/assets/releases/download/risc-v/gcc-14.3-riscv64-unknown-linux-gnu-2.39.tar.xz
 - AX620E uclibc（arm-AX620E-linux-uclibcgnueabihf）：https://github.com/AXERA-TECH/ax620q_bsp_sdk/releases/download/v2.0.0/arm-AX620E-linux-uclibcgnueabihf_V3_20240320.tgz
 
