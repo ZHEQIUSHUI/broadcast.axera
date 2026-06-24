@@ -2373,29 +2373,59 @@
         ==================================================== */
         .update-job-indicator {
             display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            padding: 6px 12px;
+            align-items: stretch;
             border-radius: var(--r-pill);
             border: 1px solid var(--accent);
             background: var(--accent-soft);
             color: var(--accent);
             font-size: 12px;
             font-weight: 600;
-            cursor: pointer;
             line-height: 1;
+            overflow: hidden;
             transition: background var(--transition), border-color var(--transition), color var(--transition);
         }
         .update-job-indicator[hidden] { display: none; }
-        .update-job-indicator:hover {
+        .update-job-indicator .indicator-main,
+        .update-job-indicator .indicator-cancel {
+            background: transparent;
+            border: 0;
+            color: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 6px 12px;
+            line-height: 1;
+            border-radius: 0;
+            transition: background var(--transition), color var(--transition);
+        }
+        .update-job-indicator .indicator-main {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .update-job-indicator .indicator-main:hover {
+            transform: none;
+            box-shadow: none;
             background: var(--accent);
             color: #fff;
-            transform: none;
-            box-shadow: var(--shadow-2);
         }
-        .update-job-indicator:hover .label,
-        .update-job-indicator:hover .hint,
-        .update-job-indicator:hover strong { color: #fff; }
+        .update-job-indicator .indicator-main:hover .label,
+        .update-job-indicator .indicator-main:hover .hint,
+        .update-job-indicator .indicator-main:hover strong { color: #fff; }
+        .update-job-indicator .indicator-cancel {
+            padding: 6px 11px;
+            border-left: 1px solid rgba(20, 30, 40, 0.10);
+            font-size: 14px;
+            color: var(--danger);
+            opacity: 0.85;
+        }
+        .update-job-indicator .indicator-cancel[hidden] { display: none; }
+        .update-job-indicator .indicator-cancel:hover {
+            background: var(--danger);
+            color: #fff;
+            transform: none;
+            box-shadow: none;
+            opacity: 1;
+        }
         .update-job-indicator strong {
             font-family: "IBM Plex Mono", monospace;
             font-size: 13px;
@@ -2407,9 +2437,7 @@
             background: currentColor;
             animation: pulse 1.6s ease-in-out infinite;
         }
-        .update-job-indicator .label {
-            color: var(--accent-strong);
-        }
+        .update-job-indicator .label { color: var(--accent-strong); }
         .update-job-indicator .hint {
             color: var(--accent);
             opacity: 0.75;
@@ -2429,9 +2457,17 @@
         }
         .update-job-indicator.is-failed .label,
         .update-job-indicator.is-failed strong { color: var(--warn); }
-        .update-job-indicator.is-failed:hover {
-            background: var(--warn);
-            color: #fff;
+        .update-job-indicator.is-failed .indicator-main:hover { background: var(--warn); }
+        .update-job-indicator.is-cancelling { opacity: 0.75; }
+        @media (max-width: 760px) {
+            .update-job-indicator { width: 100%; justify-content: space-between; }
+            .update-job-indicator .indicator-main {
+                flex: 1 1 auto;
+                justify-content: center;
+                padding: 8px 12px;
+            }
+            .update-job-indicator .indicator-main .hint { display: none; }
+            .update-job-indicator .indicator-cancel { padding: 8px 14px; }
         }
 
         /* ===================================================
@@ -3183,6 +3219,7 @@
                 <div class="update-actions-hint" id="update-actions-hint">需要至少一个目标：勾选在线设备、填写手动 IP / 网段任一即可。</div>
                 <div class="update-actions-buttons">
                     <button class="btn-secondary" id="btn-update-refresh" type="button">刷新结果</button>
+                    <button class="btn-danger" id="btn-update-cancel" type="button" hidden>取消任务</button>
                     <button class="btn-primary" id="btn-update-start" type="button">开始 安装 / 更新</button>
                 </div>
             </div>
@@ -3329,6 +3366,7 @@
             btnUpdateClose: document.getElementById('btn-update-close'),
             btnUpdateStart: document.getElementById('btn-update-start'),
             btnUpdateRefresh: document.getElementById('btn-update-refresh'),
+            btnUpdateCancel: document.getElementById('btn-update-cancel'),
             updateSubnetTargets: document.getElementById('update-subnet-targets'),
             updateManualTargets: document.getElementById('update-manual-targets'),
             modal: document.getElementById('terminal-modal'),
@@ -4761,6 +4799,7 @@
             if (status === 'skipped') return 'skipped';
             if (status === 'partial_success') return 'partial';
             if (status === 'failed') return 'failed';
+            if (status === 'cancelled') return 'skipped';
             return '';
         }
 
@@ -4771,6 +4810,7 @@
             if (status === 'skipped') return '已跳过';
             if (status === 'partial_success') return '部分成功';
             if (status === 'failed') return '失败';
+            if (status === 'cancelled') return '已取消';
             return '未开始';
         }
 
@@ -5651,6 +5691,10 @@
         elements.btnUpdateClose.addEventListener('click', closeUpdateModal);
         elements.btnUpdateStart.addEventListener('click', startBatchUpdate);
         elements.btnUpdateRefresh.addEventListener('click', refreshUpdateJob);
+        elements.btnUpdateCancel.addEventListener('click', () => {
+            if (!state.updateJobId) return;
+            cancelUpdateJob(state.updateJobId);
+        });
         elements.updateSubnetTargets.addEventListener('input', refreshUpdateSelectionPreview);
         elements.updateManualTargets.addEventListener('input', refreshUpdateSelectionPreview);
         elements.btnOpenRemotes.addEventListener('click', openRemoteModal);
@@ -6377,7 +6421,28 @@
         function jobIsActive(status) { return status === 'queued' || status === 'running'; }
         function jobIsTerminal(status) {
             return status === 'success' || status === 'partial_success'
-                || status === 'failed' || status === 'skipped';
+                || status === 'failed' || status === 'skipped'
+                || status === 'cancelled';
+        }
+
+        async function cancelUpdateJob(jobId, opts) {
+            if (!jobId) return false;
+            const silent = opts && opts.silent;
+            const confirmMessage = (opts && opts.confirmMessage) || '确认取消当前批量任务？已开始的会话会自然超时结束，未开始的目标会标为已取消。';
+            if (!silent && !window.confirm(confirmMessage)) return false;
+            try {
+                const response = await fetch(`/api/update/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.message || payload.error || '取消失败');
+                }
+                if (!silent) showToast('已请求取消任务');
+                renderUpdateJob(payload);
+                return true;
+            } catch (err) {
+                if (!silent) showToast(err.message || '取消失败');
+                return false;
+            }
         }
 
         // Insert a sticky progress chip in the batch bar so closed-modal jobs are visible.
@@ -6386,15 +6451,27 @@
             if (__jobIndicator) return __jobIndicator;
             const batchActions = document.querySelector('.batch-bar .batch-actions');
             if (!batchActions) return null;
-            const el = document.createElement('button');
-            el.id = 'update-job-indicator';
-            el.className = 'update-job-indicator';
-            el.type = 'button';
-            el.hidden = true;
-            el.addEventListener('click', () => openUpdateModal({ allowEmptySelection: true }));
-            batchActions.parentNode.insertBefore(el, batchActions);
-            __jobIndicator = el;
-            return el;
+            const wrap = document.createElement('div');
+            wrap.id = 'update-job-indicator';
+            wrap.className = 'update-job-indicator';
+            wrap.hidden = true;
+            wrap.innerHTML = `
+                <button type="button" class="indicator-main" data-action="view"></button>
+                <button type="button" class="indicator-cancel" data-action="cancel" title="取消任务" aria-label="取消任务">✕</button>
+            `;
+            wrap.addEventListener('click', (event) => {
+                const btn = event.target.closest('[data-action]');
+                if (!btn) return;
+                if (btn.dataset.action === 'view') {
+                    openUpdateModal({ allowEmptySelection: true });
+                } else if (btn.dataset.action === 'cancel') {
+                    event.stopPropagation();
+                    cancelUpdateJob(state.updateJobId);
+                }
+            });
+            batchActions.parentNode.insertBefore(wrap, batchActions);
+            __jobIndicator = wrap;
+            return wrap;
         }
 
         function updateJobIndicator(job) {
@@ -6403,23 +6480,38 @@
             const active = job && jobIsActive(job.status);
             if (!active) {
                 el.hidden = true;
-                el.classList.remove('is-failed', 'is-running');
+                el.classList.remove('is-failed', 'is-running', 'is-cancelling');
                 return;
             }
             const total = Number(job.target_count || 0);
             const done = Number(job.completed_count || 0);
             const failed = Number(job.failed_count || 0);
             const phase = job.status === 'queued' ? '准备中' : '执行中';
+            const cancelling = job.cancelled ? ' · 取消中' : '';
             el.hidden = false;
             el.classList.add('is-running');
             el.classList.toggle('is-failed', failed > 0);
-            el.innerHTML = `
-                <span class="dot"></span>
-                <span class="label">后台${phase}</span>
-                <strong>${done}/${total}</strong>
-                ${failed ? `<span class="fail-pill">失败 ${failed}</span>` : ''}
-                <span class="hint">点击查看</span>
-            `;
+            el.classList.toggle('is-cancelling', !!job.cancelled);
+            const main = el.querySelector('.indicator-main');
+            if (main) {
+                main.innerHTML = `
+                    <span class="dot"></span>
+                    <span class="label">后台${phase}${cancelling}</span>
+                    <strong>${done}/${total}</strong>
+                    ${failed ? `<span class="fail-pill">失败 ${failed}</span>` : ''}
+                    <span class="hint">点击查看</span>
+                `;
+            }
+            const cancel = el.querySelector('.indicator-cancel');
+            if (cancel) cancel.hidden = !!job.cancelled;
+        }
+
+        function updateCancelButton(job) {
+            if (!elements.btnUpdateCancel) return;
+            const active = job && jobIsActive(job.status);
+            elements.btnUpdateCancel.hidden = !active;
+            elements.btnUpdateCancel.disabled = !!(job && job.cancelled);
+            elements.btnUpdateCancel.textContent = job && job.cancelled ? '取消中…' : '取消任务';
         }
 
         // Wrap renderUpdateJob: persist id, surface indicator, toast on finish
@@ -6428,6 +6520,7 @@
             const prevStatus = state.updateJobStatus;
             __jobOrigRenderUpdateJob(job);
             updateJobIndicator(job);
+            updateCancelButton(job);
             if (job && jobIsActive(job.status)) {
                 persistLastUpdateJob(job.job_id);
             } else if (job && jobIsTerminal(job.status)) {

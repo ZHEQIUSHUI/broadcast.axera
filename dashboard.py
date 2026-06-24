@@ -1177,6 +1177,8 @@ def build_update_job_public(job_id, targets, strategy, parallelism):
         "success_count": 0,
         "skipped_count": 0,
         "failed_count": 0,
+        "cancelled": False,
+        "cancelled_at": None,
         "bundle_ready": False,
         "bundle_version": None,
         "build_output": "",
@@ -1253,13 +1255,39 @@ def finish_update_job(job_id):
         job = update_jobs.get(job_id)
         if not job:
             return
-        if job["status"] == "failed" and job["failed_count"] == 0:
+        if job.get("cancelled"):
+            job["status"] = "cancelled"
+        elif job["status"] == "failed" and job["failed_count"] == 0:
             job["failed_count"] = job["target_count"]
         elif job["failed_count"] > 0:
             job["status"] = "partial_success" if job["success_count"] > 0 or job["skipped_count"] > 0 else "failed"
         else:
             job["status"] = "success"
         job["finished_at"] = time.time()
+
+
+def is_update_job_cancelled(job_id):
+    with update_lock:
+        job = update_jobs.get(job_id)
+        return bool(job and job.get("cancelled"))
+
+
+def mark_remaining_targets_cancelled(job_id):
+    """Mark any pending / running targets as skipped (with reason 已取消)."""
+    with update_lock:
+        job = update_jobs.get(job_id)
+        if not job:
+            return
+        now = time.time()
+        for target in job["targets"]:
+            if target["status"] in ("pending", "running"):
+                target["status"] = "skipped"
+                target["message"] = "已取消"
+                target["finished_at"] = now
+                attempts = list(target.get("attempts") or [])
+                attempts.append({"transport": "cancel", "ok": False, "message": "任务已取消"})
+                target["attempts"] = attempts
+        recompute_update_job_counts(job)
 
 
 def build_update_bundle(job_id):
@@ -2618,13 +2646,18 @@ def run_update_job(
 
     alive_targets = []
     scan_workers = max(1, min(len(targets), UPDATE_SCAN_MAX_PARALLEL))
-    with ThreadPoolExecutor(max_workers=scan_workers) as executor:
-        future_map = {
-            executor.submit(run_quick_scan_for_target, target, strategy, dict(ssh_config), dict(telnet_config)): target
-            for target in targets
-        }
-        for future in as_completed(future_map):
-            target = future_map[future]
+    scan_executor = ThreadPoolExecutor(max_workers=scan_workers)
+    scan_futures = {
+        scan_executor.submit(run_quick_scan_for_target, target, strategy, dict(ssh_config), dict(telnet_config)): target
+        for target in targets
+    }
+    try:
+        for future in as_completed(scan_futures):
+            if is_update_job_cancelled(job_id):
+                for queued in scan_futures:
+                    queued.cancel()
+                break
+            target = scan_futures[future]
             try:
                 scan_result = future.result()
             except Exception as exc:
@@ -2656,6 +2689,13 @@ def run_update_job(
                     attempts=attempts,
                     log=scan_result.get("summary", ""),
                 )
+    finally:
+        scan_executor.shutdown(wait=True)
+
+    if is_update_job_cancelled(job_id):
+        mark_remaining_targets_cancelled(job_id)
+        finish_update_job(job_id)
+        return
 
     if not alive_targets:
         finish_update_job(job_id)
@@ -2665,6 +2705,11 @@ def run_update_job(
         bundle = build_update_bundle(job_id)
     except Exception as exc:
         mark_update_job_failed(job_id, str(exc))
+        return
+
+    if is_update_job_cancelled(job_id):
+        mark_remaining_targets_cancelled(job_id)
+        finish_update_job(job_id)
         return
 
     with update_lock:
@@ -2678,9 +2723,12 @@ def run_update_job(
         job["bundle_path"] = bundle["archive_path"]
 
     max_workers = max(1, min(parallelism, len(alive_targets), UPDATE_MAX_PARALLEL))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_map = {}
+    install_executor = ThreadPoolExecutor(max_workers=max_workers)
+    install_futures = {}
+    try:
         for target, base_attempts in alive_targets:
+            if is_update_job_cancelled(job_id):
+                break
             update_job_target_state(
                 job_id,
                 target["ip"],
@@ -2690,7 +2738,7 @@ def run_update_job(
                 transport=None,
                 log="",
             )
-            future = executor.submit(
+            future = install_executor.submit(
                 run_update_for_target,
                 target,
                 strategy,
@@ -2703,10 +2751,13 @@ def run_update_job(
                 job_id,
                 list(base_attempts),
             )
-            future_map[future] = target
+            install_futures[future] = target
 
-        for future in as_completed(future_map):
-            target = future_map[future]
+        for future in as_completed(install_futures):
+            if is_update_job_cancelled(job_id):
+                for queued in install_futures:
+                    queued.cancel()
+            target = install_futures[future]
             try:
                 result = future.result()
                 update_job_target_state(
@@ -2739,7 +2790,11 @@ def run_update_job(
                     attempts=attempts,
                     log=tail_text(message),
                 )
+    finally:
+        install_executor.shutdown(wait=True)
 
+    if is_update_job_cancelled(job_id):
+        mark_remaining_targets_cancelled(job_id)
     finish_update_job(job_id)
 
 
@@ -3020,6 +3075,7 @@ def api_update_list_jobs():
                     "success_count": job.get("success_count", 0),
                     "skipped_count": job.get("skipped_count", 0),
                     "failed_count": job.get("failed_count", 0),
+                    "cancelled": bool(job.get("cancelled")),
                     "bundle_version": job.get("bundle_version"),
                     "error": job.get("error", ""),
                 }
@@ -3164,6 +3220,26 @@ def api_update_job(job_id):
         if not job:
             return jsonify({"error": "job_not_found"}), 404
         payload = serialize_update_job(job)
+    return jsonify(payload)
+
+
+@app.route("/api/update/jobs/<job_id>/cancel", methods=["POST"])
+def api_update_cancel_job(job_id):
+    """Request cancellation. Pending / running targets become skipped with
+    reason 已取消. In-flight SSH / Telnet sessions run to their own timeout."""
+    with update_lock:
+        job = update_jobs.get(job_id)
+        if not job:
+            return jsonify({"ok": False, "error": "job_not_found"}), 404
+        if job.get("status") in ("success", "partial_success", "failed", "skipped", "cancelled"):
+            payload = serialize_update_job(job)
+            payload["ok"] = True
+            payload["already_finished"] = True
+            return jsonify(payload)
+        job["cancelled"] = True
+        job["cancelled_at"] = time.time()
+        payload = serialize_update_job(job)
+        payload["ok"] = True
     return jsonify(payload)
 
 
