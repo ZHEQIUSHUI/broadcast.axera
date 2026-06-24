@@ -35,12 +35,12 @@ warn() {
 
 port_in_use_tcp() {
   local port="$1"
-  ss -ltnH "sport = :${port}" 2>/dev/null | head -n 1 | rg -q .
+  ss -ltnH "sport = :${port}" 2>/dev/null | head -n 1 | grep -q .
 }
 
 port_in_use_udp() {
   local port="$1"
-  ss -lunH "sport = :${port}" 2>/dev/null | head -n 1 | rg -q .
+  ss -lunH "sport = :${port}" 2>/dev/null | head -n 1 | grep -q .
 }
 
 log "[update] repo: ${REPO_ROOT}"

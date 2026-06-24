@@ -42,7 +42,9 @@ APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 RUNTIME_ROOT = os.path.join(APP_ROOT, ".runtime")
 UPDATE_JOBS_ROOT = os.path.join(RUNTIME_ROOT, "update_jobs")
 DEVICE_METADATA_PATH = os.path.join(RUNTIME_ROOT, "device_metadata.json")
+DEVICE_OCCUPANCY_PATH = os.path.join(RUNTIME_ROOT, "device_occupancy.json")
 REMOTE_DASHBOARDS_PATH = os.path.join(RUNTIME_ROOT, "remote_dashboards.json")
+DEVICE_OCCUPANCY_TTL_SECONDS = max(60, min(86400, int(os.getenv("DEVICE_OCCUPANCY_TTL_SECONDS", "86400"))))
 
 DASHBOARD_SITE_LABEL = (os.getenv("DASHBOARD_SITE_LABEL", "本地") or "本地").strip() or "本地"
 DASHBOARD_SITE_NOTE = (os.getenv("DASHBOARD_SITE_NOTE", "") or "").strip()
@@ -71,6 +73,8 @@ online_devices = {}
 device_lock = threading.Lock()
 device_metadata = {}
 metadata_lock = threading.Lock()
+device_occupancy = {}
+occupancy_lock = threading.Lock()
 remote_dashboards = {}
 remote_lock = threading.Lock()
 
@@ -522,6 +526,164 @@ def persist_device_metadata_records_locked():
     )
 
 
+def normalize_occupancy_note(value, limit=120):
+    text = clean_text(value)
+    if len(text) > limit:
+        text = text[:limit]
+    return text
+
+
+def normalize_occupancy_record(record, now_ts=None):
+    if not isinstance(record, dict):
+        return None
+
+    now_ts = int(now_ts or time.time())
+    expires_at = safe_int(record.get("expires_at"))
+    if not expires_at or expires_at <= now_ts:
+        return None
+
+    occupied_at = safe_int(record.get("occupied_at")) or max(now_ts, expires_at - DEVICE_OCCUPANCY_TTL_SECONDS)
+    return {
+        "occupied": True,
+        "note": normalize_occupancy_note(record.get("note")),
+        "occupied_at": occupied_at,
+        "occupied_at_iso": clean_text(record.get("occupied_at_iso")) or now_iso(),
+        "expires_at": expires_at,
+        "expires_at_iso": clean_text(record.get("expires_at_iso")) or datetime.fromtimestamp(expires_at).isoformat(timespec="seconds"),
+        "updated_at": clean_text(record.get("updated_at")) or now_iso(),
+    }
+
+
+def load_device_occupancy_records():
+    if not os.path.exists(DEVICE_OCCUPANCY_PATH):
+        return {}
+
+    try:
+        with open(DEVICE_OCCUPANCY_PATH, "r", encoding="utf-8") as stream:
+            payload = json.load(stream)
+    except Exception as exc:
+        print(f"failed to load device occupancy: {exc}")
+        return {}
+
+    if isinstance(payload, dict) and isinstance(payload.get("records"), dict):
+        records = payload["records"]
+    elif isinstance(payload, dict):
+        records = payload
+    else:
+        return {}
+
+    normalized = {}
+    now_ts = int(time.time())
+    for key, record in records.items():
+        normalized_record = normalize_occupancy_record(record, now_ts=now_ts)
+        if normalized_record:
+            normalized[str(key)] = normalized_record
+    return normalized
+
+
+def persist_device_occupancy_records_locked():
+    atomic_write_json(
+        DEVICE_OCCUPANCY_PATH,
+        {
+            "version": 1,
+            "updated_at": now_iso(),
+            "ttl_seconds": DEVICE_OCCUPANCY_TTL_SECONDS,
+            "records": device_occupancy,
+        },
+    )
+
+
+def prune_expired_device_occupancy_locked(now_ts=None):
+    now_ts = int(now_ts or time.time())
+    expired_keys = [
+        key for key, record in device_occupancy.items()
+        if not normalize_occupancy_record(record, now_ts=now_ts)
+    ]
+    for key in expired_keys:
+        device_occupancy.pop(key, None)
+    return bool(expired_keys)
+
+
+def device_occupancy_key_for_ip(ip_address):
+    return make_device_metadata_key("ip", ip_address)
+
+
+def device_occupancy_key_for_payload(payload, ip_address=""):
+    return device_occupancy_key_for_ip(payload.get("ip") or ip_address)
+
+
+def resolve_device_occupancy(payload, ip_address=""):
+    key = device_occupancy_key_for_payload(payload, ip_address)
+    if not key:
+        return None
+
+    now_ts = int(time.time())
+    with occupancy_lock:
+        changed = prune_expired_device_occupancy_locked(now_ts=now_ts)
+        record = normalize_occupancy_record(device_occupancy.get(key), now_ts=now_ts)
+        if changed:
+            persist_device_occupancy_records_locked()
+
+    if not record:
+        return None
+
+    record["remaining_seconds"] = max(0, int(record["expires_at"] - now_ts))
+    return record
+
+
+def apply_device_occupancy(device):
+    occupancy = resolve_device_occupancy(device, device.get("ip"))
+    device["occupancy"] = occupancy
+    device["is_occupied"] = bool(occupancy)
+    return device
+
+
+def clamp_occupancy_duration(value):
+    parsed = safe_int(value)
+    if parsed is None:
+        parsed = DEVICE_OCCUPANCY_TTL_SECONDS
+    return max(60, min(DEVICE_OCCUPANCY_TTL_SECONDS, parsed))
+
+
+def find_remote_dashboard(remote_id="", origin=""):
+    normalized_origin = ""
+    if origin:
+        try:
+            normalized_origin = normalize_remote_origin(origin)
+        except Exception:
+            normalized_origin = clean_text(origin).rstrip("/")
+
+    with remote_lock:
+        if remote_id and remote_id in remote_dashboards:
+            return dict(remote_dashboards[remote_id])
+        if normalized_origin:
+            for remote in remote_dashboards.values():
+                if clean_text(remote.get("origin")).rstrip("/") == normalized_origin.rstrip("/"):
+                    return dict(remote)
+    return None
+
+
+def serialize_local_device_for_response(device, include_history=True):
+    payload = serialize_device(device) if include_history else dict(device)
+    if not include_history:
+        payload.pop("history", None)
+    payload.setdefault("device_key", f"local:{clean_text(payload.get('ip'))}")
+    attach_source_fields(
+        payload,
+        device_key=payload["device_key"],
+        source_kind="local",
+        source_id="local",
+        source_origin="",
+        site_key="local",
+        site_label=clean_text(payload.get("site_label")) or DASHBOARD_SITE_LABEL,
+        site_note=clean_text(payload.get("site_note")) or DASHBOARD_SITE_NOTE,
+    )
+    apply_device_occupancy(payload)
+    if include_history:
+        ensure_serialized_history(payload)
+    return payload
+
+
 def normalize_remote_label(value, limit=40):
     text = clean_text(value)
     if len(text) > limit:
@@ -661,6 +823,7 @@ def apply_device_metadata(device):
 
 
 device_metadata = load_device_metadata_records()
+device_occupancy = load_device_occupancy_records()
 remote_dashboards = load_remote_dashboards_records()
 
 
@@ -819,6 +982,7 @@ def build_summary(devices):
         "high_mem_count": 0,
         "ax_count": 0,
         "gpu_count": 0,
+        "occupied_count": 0,
     }
 
     cpu_values = []
@@ -829,6 +993,8 @@ def build_summary(devices):
             summary["ax_count"] += 1
         if device.get("gpu_present"):
             summary["gpu_count"] += 1
+        if device.get("is_occupied"):
+            summary["occupied_count"] += 1
         if device.get("cpu_usage_percent") is not None:
             cpu_values.append(device["cpu_usage_percent"])
             if device["cpu_usage_percent"] >= 80:
@@ -1089,10 +1255,7 @@ def snapshot_local_devices(include_history=True):
 
     serialized = []
     for device in devices:
-        payload = serialize_device(device) if include_history else dict(device)
-        if not include_history:
-            payload.pop("history", None)
-        serialized.append(payload)
+        serialized.append(serialize_local_device_for_response(device, include_history=include_history))
     return serialized
 
 
@@ -1100,19 +1263,6 @@ def collect_combined_devices(include_history=True, include_remotes=False, reques
     combined = []
     local_devices = snapshot_local_devices(include_history=include_history)
     for payload in local_devices:
-        payload.setdefault("device_key", f"local:{clean_text(payload.get('ip'))}")
-        attach_source_fields(
-            payload,
-            device_key=payload["device_key"],
-            source_kind="local",
-            source_id="local",
-            source_origin="",
-            site_key="local",
-            site_label=clean_text(payload.get("site_label")) or DASHBOARD_SITE_LABEL,
-            site_note=clean_text(payload.get("site_note")) or DASHBOARD_SITE_NOTE,
-        )
-        if include_history:
-            ensure_serialized_history(payload)
         combined.append(payload)
 
     if not include_remotes:
@@ -2894,9 +3044,93 @@ def api_device_metadata():
         if not device:
             return jsonify({"ok": True, "device": None})
         apply_device_metadata(device)
-        payload = serialize_device(device)
+        payload = serialize_local_device_for_response(device)
 
     return jsonify({"ok": True, "device": payload})
+
+
+@app.route("/api/devices/occupancy", methods=["POST"])
+def api_device_occupancy():
+    body = request.get_json(silent=True) or {}
+    ip_address = clean_text(body.get("ip"))
+    device_key = clean_text(body.get("device_key"))
+    if not ip_address and device_key.startswith("local:"):
+        ip_address = clean_text(device_key.split(":", 1)[1])
+    if not ip_address:
+        return jsonify({"ok": False, "error": "missing_ip"}), 400
+
+    action = clean_text(body.get("action"), "occupy").lower()
+    if action not in ("occupy", "release"):
+        return jsonify({"ok": False, "error": "invalid_action"}), 400
+
+    source_kind = clean_text(body.get("source_kind"), "local").lower()
+    source_id = clean_text(body.get("source_id"))
+    source_origin = clean_text(body.get("source_origin"))
+    if source_kind == "remote" or (source_id and source_id != "local"):
+        remote = find_remote_dashboard(source_id, source_origin)
+        if not remote:
+            return jsonify({"ok": False, "error": "remote_not_found"}), 404
+        try:
+            remote_payload = http_request_json(
+                f"{clean_text(remote.get('origin')).rstrip('/')}/api/devices/occupancy",
+                method="POST",
+                body={
+                    "ip": ip_address,
+                    "action": action,
+                    "note": body.get("note"),
+                    "duration_seconds": body.get("duration_seconds"),
+                },
+                timeout_seconds=REMOTE_FETCH_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "error": "remote_update_failed", "message": str(exc)}), 502
+        if isinstance(remote_payload, dict):
+            remote_payload["proxied"] = True
+            remote_payload["remote"] = {
+                "id": remote.get("id"),
+                "origin": remote.get("origin"),
+                "label": remote.get("label"),
+            }
+            return jsonify(remote_payload)
+        return jsonify({"ok": False, "error": "invalid_remote_response"}), 502
+
+    occupancy_key = device_occupancy_key_for_ip(ip_address)
+    if not occupancy_key:
+        return jsonify({"ok": False, "error": "invalid_ip"}), 400
+
+    with device_lock:
+        device_exists = ip_address in online_devices
+
+    if not device_exists:
+        return jsonify({"ok": False, "error": "device_not_found"}), 404
+
+    with occupancy_lock:
+        changed = prune_expired_device_occupancy_locked()
+        if action == "release":
+            changed = bool(device_occupancy.pop(occupancy_key, None)) or changed
+            occupancy = None
+        else:
+            now_ts = int(time.time())
+            duration_seconds = clamp_occupancy_duration(body.get("duration_seconds"))
+            occupancy = {
+                "occupied": True,
+                "note": normalize_occupancy_note(body.get("note")),
+                "occupied_at": now_ts,
+                "occupied_at_iso": now_iso(),
+                "expires_at": now_ts + duration_seconds,
+                "expires_at_iso": datetime.fromtimestamp(now_ts + duration_seconds).isoformat(timespec="seconds"),
+                "updated_at": now_iso(),
+            }
+            device_occupancy[occupancy_key] = occupancy
+            changed = True
+        if changed:
+            persist_device_occupancy_records_locked()
+
+    with device_lock:
+        device = online_devices.get(ip_address)
+        payload = serialize_local_device_for_response(device) if device else None
+
+    return jsonify({"ok": True, "action": action, "occupancy": occupancy, "device": payload})
 
 
 @app.route("/api/remotes")

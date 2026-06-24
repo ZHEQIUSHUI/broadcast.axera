@@ -984,6 +984,7 @@
         ==================================================== */
         .detail-modal,
         .update-modal,
+        .occupancy-modal,
         .terminal-modal {
             position: fixed;
             inset: 0;
@@ -998,6 +999,7 @@
 
         .detail-modal.open,
         .update-modal.open,
+        .occupancy-modal.open,
         .terminal-modal.open {
             display: flex;
             animation: overlayIn 0.18s ease;
@@ -1014,9 +1016,11 @@
         }
 
         .update-modal { z-index: 105; }
+        .occupancy-modal { z-index: 108; }
         .terminal-modal { z-index: 110; }
 
         .detail-shell,
+        .occupancy-shell,
         .update-shell {
             background: var(--bg-panel);
             border: 1px solid var(--line);
@@ -1034,6 +1038,7 @@
         }
 
         .detail-top,
+        .occupancy-top,
         .update-top {
             display: flex;
             justify-content: space-between;
@@ -1045,6 +1050,7 @@
         }
 
         .detail-top::before,
+        .occupancy-top::before,
         .update-top::before {
             content: "";
             position: absolute;
@@ -1056,6 +1062,7 @@
         }
 
         .detail-top h3,
+        .occupancy-top h3,
         .update-top h3 {
             margin: 0 0 4px;
             font-size: 22px;
@@ -1066,6 +1073,7 @@
         }
 
         .detail-top p,
+        .occupancy-top p,
         .update-top p {
             margin: 0;
             color: var(--muted);
@@ -1117,6 +1125,7 @@
 
         .detail-editor label,
         .update-card label,
+        .occupancy-form label,
         .terminal-connect label {
             display: grid;
             gap: 5px;
@@ -1127,6 +1136,8 @@
 
         .detail-editor input,
         .detail-editor textarea,
+        .occupancy-form input,
+        .occupancy-form select,
         .update-card input,
         .update-card select,
         .update-card textarea {
@@ -1173,6 +1184,68 @@
 
         .detail-editor-status.saved {
             color: var(--accent);
+        }
+
+        .occupancy-shell {
+            width: min(460px, 100%);
+            max-height: min(88vh, 620px);
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            overflow: hidden;
+        }
+
+        .occupancy-body {
+            padding: 16px 22px 12px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .occupancy-form {
+            display: grid;
+            gap: 12px;
+        }
+
+        .occupancy-form input,
+        .occupancy-form select {
+            width: 100%;
+            padding: 9px 11px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--line);
+            background: var(--bg-panel-strong);
+            color: var(--ink);
+        }
+
+        .occupancy-hint {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .occupancy-actions {
+            padding: 12px 22px 18px;
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            border-top: 1px solid var(--line-soft);
+        }
+
+        .occupied-badge {
+            color: var(--warn);
+            font-weight: 700;
+        }
+
+        .device-card.is-occupied {
+            border-color: rgba(180, 83, 9, 0.45);
+        }
+
+        .device-card.is-occupied::before {
+            opacity: 0.9;
+            background: var(--warn);
+        }
+
+        .device-foot-meta .occupied-meta {
+            color: var(--warn);
+            font-weight: 700;
         }
 
         .detail-body {
@@ -3201,6 +3274,41 @@
         </div>
     </div>
 
+    <div class="occupancy-modal" id="occupancy-modal" role="dialog" aria-modal="true" aria-labelledby="occupancy-heading">
+        <div class="occupancy-shell">
+            <div class="occupancy-top">
+                <div>
+                    <h3 id="occupancy-heading">标记占用</h3>
+                    <p id="occupancy-subheading">选择临时占用时长，到期后自动释放。</p>
+                </div>
+                <button class="btn-secondary" id="btn-occupancy-close" type="button">关闭</button>
+            </div>
+            <div class="occupancy-body">
+                <div class="occupancy-form">
+                    <label>
+                        自动释放时间
+                        <select id="occupancy-duration">
+                            <option value="3600">1 小时</option>
+                            <option value="7200">2 小时</option>
+                            <option value="14400" selected>4 小时</option>
+                            <option value="28800">8 小时</option>
+                            <option value="86400">24 小时</option>
+                        </select>
+                    </label>
+                    <label>
+                        备注
+                        <input id="occupancy-note" maxlength="120" placeholder="可选，比如名字 / 用途">
+                    </label>
+                </div>
+                <div class="occupancy-hint">占用只做提醒，不限制任何人释放、重新标记或继续打开终端。</div>
+            </div>
+            <div class="occupancy-actions">
+                <button class="btn-secondary" id="btn-occupancy-cancel" type="button">取消</button>
+                <button class="btn-primary" id="btn-occupancy-save" type="button">标记占用</button>
+            </div>
+        </div>
+    </div>
+
     <div class="update-modal" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="update-heading">
         <div class="update-shell update-shell-v2">
             <div class="update-top">
@@ -3417,6 +3525,8 @@
             remotes: [],
             remoteEditingId: null,
             devicesRefreshing: false,
+            occupancyDeviceKey: null,
+            occupancySaving: false,
         };
 
         const LOCAL_CREDENTIALS_KEY = 'broadcast.axera.local_terminal_credentials.v2';
@@ -3442,6 +3552,14 @@
             detailEditorNote: document.getElementById('detail-editor-note'),
             btnDetailSave: document.getElementById('btn-detail-save'),
             btnDetailReset: document.getElementById('btn-detail-reset'),
+            occupancyModal: document.getElementById('occupancy-modal'),
+            occupancyHeading: document.getElementById('occupancy-heading'),
+            occupancySubheading: document.getElementById('occupancy-subheading'),
+            occupancyDuration: document.getElementById('occupancy-duration'),
+            occupancyNote: document.getElementById('occupancy-note'),
+            btnOccupancyClose: document.getElementById('btn-occupancy-close'),
+            btnOccupancyCancel: document.getElementById('btn-occupancy-cancel'),
+            btnOccupancySave: document.getElementById('btn-occupancy-save'),
             updateModal: document.getElementById('update-modal'),
             updateHeading: document.getElementById('update-heading'),
             updateSubheading: document.getElementById('update-subheading'),
@@ -4427,6 +4545,65 @@
             return `${hours}h ${minutes}m`;
         }
 
+        function getDeviceOccupancy(device) {
+            const occupancy = device?.occupancy || null;
+            if (!occupancy || !occupancy.occupied) {
+                return null;
+            }
+            const expiresAt = Number(occupancy.expires_at || 0);
+            if (expiresAt && expiresAt * 1000 <= Date.now()) {
+                return null;
+            }
+            return occupancy;
+        }
+
+        function formatDuration(seconds) {
+            const value = Math.max(0, Number(seconds || 0));
+            if (value >= 3600) {
+                const hours = Math.floor(value / 3600);
+                const minutes = Math.floor((value % 3600) / 60);
+                return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+            }
+            const minutes = Math.max(1, Math.ceil(value / 60));
+            return `${minutes}m`;
+        }
+
+        function formatOccupancyRemaining(occupancy) {
+            if (!occupancy) {
+                return '';
+            }
+            const remaining = Number(occupancy.remaining_seconds);
+            if (Number.isFinite(remaining) && remaining > 0) {
+                return formatDuration(remaining);
+            }
+            const expiresAt = Number(occupancy.expires_at || 0);
+            if (expiresAt) {
+                return formatDuration(Math.max(0, expiresAt - Date.now() / 1000));
+            }
+            return '';
+        }
+
+        function occupancyDisplayText(device) {
+            const occupancy = getDeviceOccupancy(device);
+            if (!occupancy) {
+                return '';
+            }
+            const note = String(occupancy.note || '').trim();
+            const remaining = formatOccupancyRemaining(occupancy);
+            const ownerText = note ? note : '已占用';
+            return remaining ? `${ownerText} · ${remaining}` : ownerText;
+        }
+
+        function confirmOccupiedTerminal(device) {
+            const occupancy = getDeviceOccupancy(device);
+            if (!occupancy) {
+                return true;
+            }
+            const note = String(occupancy.note || '').trim() || '未填写备注';
+            const remaining = formatOccupancyRemaining(occupancy) || '未知';
+            return window.confirm(`这台设备已被标记占用。\n备注: ${note}\n自动释放: ${remaining} 后\n\n仍然打开终端？`);
+        }
+
         function meterClass(value) {
             if (value >= 90) return 'danger';
             if (value >= 75) return 'warn';
@@ -4688,11 +4865,12 @@
 
         function renderSummary(summary) {
             const avgCpu = summary.avg_cpu_usage_percent === null ? 'N/A' : `${summary.avg_cpu_usage_percent.toFixed(1)}%`;
+            const occupiedCount = Number(summary.occupied_count || 0);
             elements.summaryGrid.innerHTML = `
                 <div class="summary-card">
                     <h3>在线设备</h3>
                     <div class="summary-value">${summary.device_count}</div>
-                    <div class="summary-note">当前在线主机数</div>
+                    <div class="summary-note">当前在线主机数${occupiedCount ? ` · ${occupiedCount} 台占用中` : ''}</div>
                 </div>
                 <div class="summary-card">
                     <h3>平均 CPU</h3>
@@ -4771,6 +4949,11 @@
 
             if (device.site_note) {
                 details.push(['位置备注', device.site_note]);
+            }
+            const occupancy = getDeviceOccupancy(device);
+            if (occupancy) {
+                details.push(['占用状态', occupancyDisplayText(device)]);
+                details.push(['自动释放', occupancy.expires_at_iso || `${formatOccupancyRemaining(occupancy)} 后`]);
             }
             if (device.source_kind !== 'local' && device.source_origin) {
                 details.push(['远程面板', device.source_origin]);
@@ -5655,6 +5838,100 @@
             window.open(origin, '_blank', 'noopener');
         }
 
+        function syncOccupancyModalButtons() {
+            elements.btnOccupancySave.disabled = state.occupancySaving || !state.occupancyDeviceKey;
+            elements.btnOccupancyCancel.disabled = state.occupancySaving;
+            elements.btnOccupancyClose.disabled = state.occupancySaving;
+        }
+
+        function openOccupancyModal(deviceKey) {
+            const device = getDevice(deviceKey);
+            if (!device) {
+                showToast('设备已离线');
+                return;
+            }
+            state.occupancyDeviceKey = deviceKey;
+            state.occupancySaving = false;
+            elements.occupancyHeading.textContent = `标记占用 · ${device.display_name || device.ip}`;
+            elements.occupancySubheading.textContent = `${device.site_label || '本地'} · ${device.ip} · 最多 24 小时自动释放`;
+            elements.occupancyDuration.value = '14400';
+            elements.occupancyNote.value = '';
+            syncOccupancyModalButtons();
+            elements.occupancyModal.classList.add('open');
+            setTimeout(() => elements.occupancyDuration.focus(), 0);
+        }
+
+        function closeOccupancyModal() {
+            if (state.occupancySaving) {
+                return;
+            }
+            state.occupancyDeviceKey = null;
+            elements.occupancyModal.classList.remove('open');
+        }
+
+        async function postDeviceOccupancy(device, action, options = {}) {
+            const response = await fetch('/api/devices/occupancy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    device_key: device.device_key || '',
+                    ip: device.ip,
+                    source_kind: device.source_kind || 'local',
+                    source_id: device.source_id || '',
+                    source_origin: device.source_origin || '',
+                    action,
+                    note: options.note || '',
+                    duration_seconds: options.duration_seconds || undefined,
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload.ok) {
+                throw new Error(payload.message || payload.error || '占用状态更新失败');
+            }
+            return payload;
+        }
+
+        async function saveOccupancyFromModal() {
+            const device = getDevice(state.occupancyDeviceKey);
+            if (!device) {
+                showToast('设备已离线');
+                closeOccupancyModal();
+                return;
+            }
+            state.occupancySaving = true;
+            syncOccupancyModalButtons();
+            try {
+                await postDeviceOccupancy(device, 'occupy', {
+                    note: elements.occupancyNote.value.trim(),
+                    duration_seconds: Number(elements.occupancyDuration.value || 86400),
+                });
+                showToast('已标记占用');
+                state.occupancyDeviceKey = null;
+                elements.occupancyModal.classList.remove('open');
+                await refreshDevices();
+            } catch (error) {
+                showToast(error.message || '占用状态更新失败');
+            } finally {
+                state.occupancySaving = false;
+                syncOccupancyModalButtons();
+            }
+        }
+
+        async function releaseDeviceOccupancy(deviceKey) {
+            const device = getDevice(deviceKey);
+            if (!device) {
+                showToast('设备已离线');
+                return;
+            }
+            try {
+                await postDeviceOccupancy(device, 'release');
+                showToast('已释放占用');
+                await refreshDevices();
+            } catch (error) {
+                showToast(error.message || '释放占用失败');
+            }
+        }
+
         async function openTerminal(deviceKey) {
             const device = getDevice(deviceKey);
             if (!device) {
@@ -5664,6 +5941,9 @@
             if (device.source_kind !== 'local') {
                 showToast('远程设备请在对应办公室 Dashboard 打开终端');
                 openRemoteDashboard(deviceKey);
+                return;
+            }
+            if (!confirmOccupiedTerminal(device)) {
                 return;
             }
 
@@ -5786,6 +6066,9 @@
         elements.btnDetailReset.addEventListener('click', () => saveDeviceMetadata(true));
         elements.detailTitleInput.addEventListener('input', handleDetailDraftInput);
         elements.detailNoteInput.addEventListener('input', handleDetailDraftInput);
+        elements.btnOccupancyClose.addEventListener('click', closeOccupancyModal);
+        elements.btnOccupancyCancel.addEventListener('click', closeOccupancyModal);
+        elements.btnOccupancySave.addEventListener('click', saveOccupancyFromModal);
         document.getElementById('btn-terminal-connect').addEventListener('click', connectFromForm);
         elements.btnSelectAll.addEventListener('click', selectAllDevices);
         elements.btnClearSelection.addEventListener('click', clearSelection);
@@ -5914,6 +6197,10 @@
             }
             if (event.key === 'Escape' && elements.detailModal.classList.contains('open')) {
                 closeDeviceDetail();
+                return;
+            }
+            if (event.key === 'Escape' && elements.occupancyModal.classList.contains('open')) {
+                closeOccupancyModal();
             }
         });
 
@@ -5991,6 +6278,8 @@
                 device.site_label,
                 device.default_user,
                 device.version,
+                device.is_occupied ? '占用 已占用 occupied' : '',
+                device.occupancy && device.occupancy.note,
             ].filter(Boolean).join(' ').toLowerCase();
         }
 
@@ -6060,6 +6349,9 @@
                 const key = device.device_key || device.ip;
                 if (state.selectedDevices.has(key)) {
                     card.classList.add('is-selected');
+                }
+                if (getDeviceOccupancy(device)) {
+                    card.classList.add('is-occupied');
                 }
             });
         }
@@ -6210,6 +6502,7 @@
             });
         }
         bindOverlayClose(elements.detailModal, closeDeviceDetail);
+        bindOverlayClose(elements.occupancyModal, closeOccupancyModal);
         bindOverlayClose(elements.updateModal, closeUpdateModal);
         bindOverlayClose(elements.remoteModal, closeRemoteModal);
         bindOverlayClose(elements.modal, closeModal);
@@ -6221,7 +6514,7 @@
             const tag = (target && target.tagName) || '';
             if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
             if (target && target.isContentEditable) return;
-            const anyModalOpen = ['detail-modal', 'update-modal', 'remote-modal', 'terminal-modal']
+            const anyModalOpen = ['detail-modal', 'occupancy-modal', 'update-modal', 'remote-modal', 'terminal-modal']
                 .some((id) => {
                     const el = document.getElementById(id);
                     return el && el.classList.contains('open');
@@ -6250,6 +6543,7 @@
 
         function v2RenderMetaSubtitle(device) {
             const isLocal = (device.source_kind || 'local') === 'local';
+            const occupancyText = occupancyDisplayText(device);
             const parts = [
                 escapeHtml(device.device_type || ''),
                 escapeHtml(device.os_name || ''),
@@ -6260,6 +6554,7 @@
                 <span class="status-dot ${isLocal ? '' : 'remote'}" aria-hidden="true"></span>
                 ${sub}
                 ${device.hasLocalCredential ? '<span class="meta-sep">·</span><span class="saved-badge">本机存有 Telnet</span>' : ''}
+                ${occupancyText ? `<span class="meta-sep">·</span><span class="occupied-badge">占用 ${escapeHtml(occupancyText)}</span>` : ''}
             `;
         }
 
@@ -6274,19 +6569,27 @@
             if (device.is_ax && device.version) {
                 parts.push(`版本 <strong>${escapeHtml(device.version)}</strong>`);
             }
+            const occupancyText = occupancyDisplayText(device);
+            if (occupancyText) {
+                parts.push(`<span class="occupied-meta">占用 <strong>${escapeHtml(occupancyText)}</strong></span>`);
+            }
             return parts.map((p) => `<span>${p}</span>`).join('');
         }
 
         function v2RenderActions(device) {
             const isLocal = (device.source_kind || 'local') === 'local';
+            const isOccupied = !!getDeviceOccupancy(device);
             const primary = isLocal
                 ? `<button class="btn-primary btn-sm" data-card-action data-action="terminal" type="button">终端</button>`
                 : `<button class="btn-secondary btn-sm" data-card-action data-action="remote" type="button">远程</button>`;
+            const occupancyBtn = isOccupied
+                ? `<button class="btn-danger btn-sm" data-card-action data-action="release-occupancy" type="button">释放占用</button>`
+                : `<button class="btn-secondary btn-sm" data-card-action data-action="occupy" type="button">标记占用</button>`;
             const copyBtn = `<button class="btn-secondary btn-sm icon-btn" data-card-action data-action="copy-ip" type="button" title="复制 IP" aria-label="复制 IP">⎘</button>`;
             const clearBtn = device.hasLocalCredential
                 ? `<button class="btn-ghost btn-sm icon-btn" data-card-action data-action="clear-pwd" type="button" title="清除本机 Telnet 密码" aria-label="清除本机 Telnet 密码">×</button>`
                 : '';
-            return `${primary}${copyBtn}${clearBtn}`;
+            return `${primary}${occupancyBtn}${copyBtn}${clearBtn}`;
         }
 
         renderDevice = function v2RenderDevice(device) {
@@ -6303,7 +6606,7 @@
                 : '<span class="device-select readonly" title="远程设备只读">只读</span>';
 
             return `
-                <article class="device-card${selected ? ' is-selected' : ''}${isNew ? ' has-new' : ''}"
+                <article class="device-card${selected ? ' is-selected' : ''}${isNew ? ' has-new' : ''}${getDeviceOccupancy(device) ? ' is-occupied' : ''}"
                          data-key="${keyAttr}"
                          data-ip="${ipAttr}"
                          data-source="${isLocal ? 'local' : 'remote'}"
@@ -6356,6 +6659,8 @@
             switch (actionBtn.dataset.action) {
                 case 'terminal':  if (key) openTerminal(key); break;
                 case 'remote':    if (key) openRemoteDashboard(key); break;
+                case 'occupy':    if (key) openOccupancyModal(key); break;
+                case 'release-occupancy': if (key) releaseDeviceOccupancy(key); break;
                 case 'copy-ip':   if (ip) copyText(ip); break;
                 case 'clear-pwd': if (key) clearPassword(key); break;
             }
@@ -6437,7 +6742,7 @@
             const tag = (event.target && event.target.tagName) || '';
             if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
             if (event.target && event.target.isContentEditable) return;
-            const anyModalOpen = ['detail-modal', 'update-modal', 'remote-modal', 'terminal-modal']
+            const anyModalOpen = ['detail-modal', 'occupancy-modal', 'update-modal', 'remote-modal', 'terminal-modal']
                 .some((id) => {
                     const el = document.getElementById(id);
                     return el && el.classList.contains('open');
@@ -7083,6 +7388,8 @@
         window.copyText = copyText;
         window.openDeviceDetail = openDeviceDetail;
         window.openTerminal = openTerminal;
+        window.openOccupancyModal = openOccupancyModal;
+        window.releaseDeviceOccupancy = releaseDeviceOccupancy;
         window.clearPassword = clearPassword;
         window.toggleDeviceSelection = toggleDeviceSelection;
     </script>
