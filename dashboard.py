@@ -2995,6 +2995,45 @@ def api_terminal_close(session_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/update/jobs", methods=["GET"])
+def api_update_list_jobs():
+    """List currently-tracked update jobs (without per-target detail).
+
+    Used by the frontend to recover background-running jobs after a page
+    refresh or modal close. Active jobs are returned first, then finished
+    ones in descending creation order. To get full target detail, the
+    client follows up with GET /api/update/jobs/<job_id>.
+    """
+    summaries = []
+    with update_lock:
+        for job_id, job in update_jobs.items():
+            summaries.append(
+                {
+                    "job_id": job_id,
+                    "status": job.get("status"),
+                    "created_at": job.get("created_at"),
+                    "started_at": job.get("started_at"),
+                    "finished_at": job.get("finished_at"),
+                    "strategy": job.get("strategy"),
+                    "target_count": job.get("target_count", 0),
+                    "completed_count": job.get("completed_count", 0),
+                    "success_count": job.get("success_count", 0),
+                    "skipped_count": job.get("skipped_count", 0),
+                    "failed_count": job.get("failed_count", 0),
+                    "bundle_version": job.get("bundle_version"),
+                    "error": job.get("error", ""),
+                }
+            )
+
+    def _sort_key(item):
+        active = item["status"] in ("queued", "running")
+        created = item.get("created_at") or 0
+        return (0 if active else 1, -created)
+
+    summaries.sort(key=_sort_key)
+    return jsonify({"ok": True, "jobs": summaries})
+
+
 @app.route("/api/update/jobs", methods=["POST"])
 def api_update_create_job():
     body = request.get_json(silent=True) or {}

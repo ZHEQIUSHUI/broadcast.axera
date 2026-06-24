@@ -2368,6 +2368,82 @@
             font-style: italic;
         }
 
+        /* ===================================================
+           Background update-job indicator (lives in batch bar)
+        ==================================================== */
+        .update-job-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 12px;
+            border-radius: var(--r-pill);
+            border: 1px solid var(--accent);
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            line-height: 1;
+            transition: background var(--transition), border-color var(--transition), color var(--transition);
+        }
+        .update-job-indicator[hidden] { display: none; }
+        .update-job-indicator:hover {
+            background: var(--accent);
+            color: #fff;
+            transform: none;
+            box-shadow: var(--shadow-2);
+        }
+        .update-job-indicator:hover .label,
+        .update-job-indicator:hover .hint,
+        .update-job-indicator:hover strong { color: #fff; }
+        .update-job-indicator strong {
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 13px;
+            color: var(--accent-strong);
+        }
+        .update-job-indicator .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 1.6s ease-in-out infinite;
+        }
+        .update-job-indicator .label {
+            color: var(--accent-strong);
+        }
+        .update-job-indicator .hint {
+            color: var(--accent);
+            opacity: 0.75;
+            font-weight: 500;
+        }
+        .update-job-indicator .fail-pill {
+            padding: 2px 8px;
+            border-radius: var(--r-pill);
+            background: var(--danger-soft);
+            color: var(--danger);
+            font-weight: 700;
+        }
+        .update-job-indicator.is-failed {
+            border-color: var(--warn);
+            background: var(--warn-soft);
+            color: var(--warn);
+        }
+        .update-job-indicator.is-failed .label,
+        .update-job-indicator.is-failed strong { color: var(--warn); }
+        .update-job-indicator.is-failed:hover {
+            background: var(--warn);
+            color: #fff;
+        }
+
+        @media (max-width: 760px) {
+            .update-job-indicator {
+                width: 100%;
+                justify-content: center;
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+            .update-job-indicator .hint { display: none; }
+        }
+
         .remote-row-actions {
             display: inline-flex;
             align-items: center;
@@ -6247,6 +6323,145 @@
             if (!id) return;
             setRemoteEnabled(id, cb.checked);
         });
+
+        /* ====== Background update-job tracking ====== */
+        const LAST_UPDATE_JOB_KEY = 'broadcast.axera.last_update_job.v1';
+
+        function persistLastUpdateJob(jobId) {
+            try {
+                if (jobId) localStorage.setItem(LAST_UPDATE_JOB_KEY, jobId);
+                else localStorage.removeItem(LAST_UPDATE_JOB_KEY);
+            } catch (_) {}
+        }
+
+        function loadLastUpdateJob() {
+            try { return localStorage.getItem(LAST_UPDATE_JOB_KEY) || null; }
+            catch (_) { return null; }
+        }
+
+        function jobIsActive(status) { return status === 'queued' || status === 'running'; }
+        function jobIsTerminal(status) {
+            return status === 'success' || status === 'partial_success'
+                || status === 'failed' || status === 'skipped';
+        }
+
+        // Insert a sticky progress chip in the batch bar so closed-modal jobs are visible.
+        let __jobIndicator = null;
+        function ensureJobIndicator() {
+            if (__jobIndicator) return __jobIndicator;
+            const batchActions = document.querySelector('.batch-bar .batch-actions');
+            if (!batchActions) return null;
+            const el = document.createElement('button');
+            el.id = 'update-job-indicator';
+            el.className = 'update-job-indicator';
+            el.type = 'button';
+            el.hidden = true;
+            el.addEventListener('click', () => openUpdateModal({ allowEmptySelection: true }));
+            batchActions.parentNode.insertBefore(el, batchActions);
+            __jobIndicator = el;
+            return el;
+        }
+
+        function updateJobIndicator(job) {
+            const el = ensureJobIndicator();
+            if (!el) return;
+            const active = job && jobIsActive(job.status);
+            if (!active) {
+                el.hidden = true;
+                el.classList.remove('is-failed', 'is-running');
+                return;
+            }
+            const total = Number(job.target_count || 0);
+            const done = Number(job.completed_count || 0);
+            const failed = Number(job.failed_count || 0);
+            const phase = job.status === 'queued' ? '准备中' : '执行中';
+            el.hidden = false;
+            el.classList.add('is-running');
+            el.classList.toggle('is-failed', failed > 0);
+            el.innerHTML = `
+                <span class="dot"></span>
+                <span class="label">后台${phase}</span>
+                <strong>${done}/${total}</strong>
+                ${failed ? `<span class="fail-pill">失败 ${failed}</span>` : ''}
+                <span class="hint">点击查看</span>
+            `;
+        }
+
+        // Wrap renderUpdateJob: persist id, surface indicator, toast on finish
+        const __jobOrigRenderUpdateJob = renderUpdateJob;
+        renderUpdateJob = function jobTrackingRenderUpdateJob(job) {
+            const prevStatus = state.updateJobStatus;
+            __jobOrigRenderUpdateJob(job);
+            updateJobIndicator(job);
+            if (job && jobIsActive(job.status)) {
+                persistLastUpdateJob(job.job_id);
+            } else if (job && jobIsTerminal(job.status)) {
+                persistLastUpdateJob(null);
+                if (jobIsActive(prevStatus) && !elements.updateModal.classList.contains('open')) {
+                    const success = Number(job.success_count || 0);
+                    const failed = Number(job.failed_count || 0);
+                    const skipped = Number(job.skipped_count || 0);
+                    const total = Number(job.target_count || 0);
+                    const verdict = job.status === 'success' ? '✓ 全部成功'
+                        : job.status === 'partial_success' ? '部分成功'
+                        : job.status === 'failed' ? '✗ 失败'
+                        : '已跳过';
+                    showToast(`后台更新完成 · ${verdict} · ${success}/${total}（跳过 ${skipped} · 失败 ${failed}）`);
+                }
+            } else if (!job) {
+                updateJobIndicator(null);
+            }
+        };
+
+        // Don't stop polling on modal close while a job is still active —
+        // we want the background indicator to stay live.
+        const __jobOrigCloseUpdateModal = closeUpdateModal;
+        closeUpdateModal = function jobTrackingCloseUpdateModal() {
+            elements.updateModal.classList.remove('open');
+            if (state.updateJobId && jobIsActive(state.updateJobStatus)) {
+                // Resume polling without keeping modal-only state
+                if (!state.updatePollTimer) {
+                    pollUpdateJob(state.updateJobId);
+                }
+                return;
+            }
+            // Fall back to original behaviour: stop polling
+            stopUpdatePolling();
+        };
+
+        // On boot, try to resume the last known job; otherwise discover any
+        // currently-running job server-side via the list endpoint.
+        async function resumeLastUpdateJob() {
+            const stored = loadLastUpdateJob();
+            if (stored) {
+                const job = await fetchUpdateJobStatus(stored, true);
+                if (!job) {
+                    persistLastUpdateJob(null);
+                } else {
+                    state.updateJobId = job.job_id;
+                    if (jobIsActive(job.status)) {
+                        pollUpdateJob(job.job_id);
+                    }
+                    return;
+                }
+            }
+            try {
+                const response = await fetch('/api/update/jobs');
+                if (!response.ok) return;
+                const payload = await response.json();
+                const active = (payload.jobs || []).find((j) => jobIsActive(j.status));
+                if (active) {
+                    state.updateJobId = active.job_id;
+                    // Render an immediate brief state, then start polling for full detail
+                    updateJobIndicator(active);
+                    pollUpdateJob(active.job_id);
+                }
+            } catch (_) {}
+        }
+
+        resumeLastUpdateJob();
+
+        /* ====== /Background update-job tracking ====== */
 
         /* ====== /Layout v2 overhaul ====== */
 
