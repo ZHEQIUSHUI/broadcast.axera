@@ -2156,7 +2156,7 @@
         }
 
         .update-targets-grid textarea {
-            min-height: 86px;
+            min-height: 110px;
             resize: vertical;
             font: 13px/1.45 "IBM Plex Mono", monospace;
             padding: 9px 11px;
@@ -2172,6 +2172,55 @@
             border-color: var(--accent);
             box-shadow: var(--focus-ring);
         }
+
+        .update-targets-label {
+            font-weight: 600;
+            color: var(--ink-soft);
+        }
+
+        .update-mixed-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: -2px;
+        }
+        .update-mixed-summary[hidden] { display: none; }
+
+        .mix-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: var(--r-pill);
+            border: 1px solid var(--line);
+            background: rgba(255, 252, 245, 0.94);
+            color: var(--muted);
+            font-size: 11.5px;
+            line-height: 1.2;
+        }
+        .mix-pill strong {
+            color: var(--ink);
+            font-weight: 700;
+            font-family: "IBM Plex Mono", monospace;
+        }
+        .mix-pill-host {
+            background: var(--accent-soft);
+            color: var(--accent);
+            border-color: var(--accent-tint);
+        }
+        .mix-pill-host strong { color: var(--accent); }
+        .mix-pill-net {
+            background: var(--info-soft);
+            color: var(--info);
+            border-color: rgba(31, 122, 140, 0.22);
+        }
+        .mix-pill-net strong { color: var(--info); }
+        .mix-pill-bad {
+            background: var(--danger-soft);
+            color: var(--danger);
+            border-color: rgba(181, 66, 49, 0.22);
+        }
+        .mix-pill-bad strong { color: var(--danger); }
 
         .auth-block {
             display: grid;
@@ -3324,19 +3373,21 @@
                 <section class="update-section">
                     <header class="update-section-head">
                         <h4>目标设备</h4>
-                        <span class="update-section-hint">在线已选 + 手动 IP + 网段扫描，三类目标会一起执行</span>
+                        <span class="update-section-hint">在线选中 + 下方手动添加，合并后一起执行</span>
                     </header>
                     <div class="update-targets" id="update-targets"></div>
-                    <div class="update-grid-2 update-targets-grid">
+                    <div class="update-targets-grid">
                         <label>
-                            手动输入 IP / 主机
-                            <textarea id="update-manual-targets" placeholder="10.126.33.210&#10;10.126.33.211"></textarea>
-                            <span class="update-note">适合单台首装或补充主机名。会与已选设备、网段结果一起执行自动安装 / 更新。</span>
-                        </label>
-                        <label>
-                            网段扫描
-                            <textarea id="update-subnet-targets" placeholder="10.126.35.x&#10;10.126.36.0/24"></textarea>
-                            <span class="update-note">支持 `10.126.35.x` / `*` / `0/24` / `10.126.35`，自动展开 1-255 并逐台 SSH / Telnet 探测。</span>
+                            <span class="update-targets-label">添加目标（每行一条，自动识别）</span>
+                            <textarea id="update-mixed-targets" placeholder="10.126.33.210&#10;ax-board.local&#10;10.126.35.x&#10;10.126.36.0/24"></textarea>
+                            <div class="update-mixed-summary" id="update-mixed-summary" hidden></div>
+                            <span class="update-note">
+                                每行一条目标，可以混搭：
+                                <strong>单台 IP / 主机名</strong>
+                                直接尝试连接；
+                                <strong>网段表达式</strong>（<code>10.x.x.x</code> / <code>10.x.x.*</code> / <code>10.x.x.0/24</code> / <code>10.x.x</code>）
+                                会自动展开为 <code>1-255</code>，先并发探测在线机器再下发。
+                            </span>
                         </label>
                     </div>
                 </section>
@@ -3588,8 +3639,8 @@
             btnUpdateCancel: document.getElementById('btn-update-cancel'),
             btnUpdateHistory: document.getElementById('btn-update-history'),
             updateHistoryPopover: document.getElementById('update-history-popover'),
-            updateSubnetTargets: document.getElementById('update-subnet-targets'),
-            updateManualTargets: document.getElementById('update-manual-targets'),
+            updateMixedTargets: document.getElementById('update-mixed-targets'),
+            updateMixedSummary: document.getElementById('update-mixed-summary'),
             modal: document.getElementById('terminal-modal'),
             terminalHeading: document.getElementById('terminal-heading'),
             terminalSubheading: document.getElementById('terminal-subheading'),
@@ -4218,12 +4269,52 @@
             return { items, invalid };
         }
 
+        function isSubnetExpressionString(text) {
+            const value = String(text || '').trim().toLowerCase();
+            if (!value) return false;
+            return (
+                /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(value) ||
+                /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(?:x|\*|1-255)$/i.test(value) ||
+                /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.0\/24$/i.test(value)
+            );
+        }
+
+        // The 目标设备 section now has a single textarea that mixes single hosts
+        // and subnet expressions. Split each line into the appropriate bucket so
+        // existing manual/subnet handling and previews keep working.
+        function getMixedTargetsFromForm() {
+            const raw = (elements.updateMixedTargets && elements.updateMixedTargets.value) || '';
+            const lines = String(raw)
+                .split(/[\n\r,，;；]+/)
+                .map((line) => line.trim())
+                .filter(Boolean);
+            const manual = [];
+            const subnetPatterns = [];
+            const seenManual = new Set();
+            const seenSubnet = new Set();
+            for (const line of lines) {
+                if (isSubnetExpressionString(line)) {
+                    if (!seenSubnet.has(line)) {
+                        seenSubnet.add(line);
+                        subnetPatterns.push(line);
+                    }
+                } else {
+                    if (!seenManual.has(line)) {
+                        seenManual.add(line);
+                        manual.push(line);
+                    }
+                }
+            }
+            return { manual, subnetPatterns };
+        }
+
         function getManualTargetsFromForm() {
-            return parseManualTargetsText(elements.updateManualTargets.value);
+            return getMixedTargetsFromForm().manual;
         }
 
         function getSubnetTargetsFromForm() {
-            return parseSubnetTargetsText(elements.updateSubnetTargets.value);
+            const { subnetPatterns } = getMixedTargetsFromForm();
+            return parseSubnetTargetsText(subnetPatterns.join('\n'));
         }
 
         function buildUpdateTargetEntries(
@@ -4329,14 +4420,41 @@
             return entries;
         }
 
+        function refreshMixedTargetsSummary(mixed, subnetInfo) {
+            const el = elements.updateMixedSummary;
+            if (!el) return;
+            const manualN = mixed.manual.length;
+            const patternN = mixed.subnetPatterns.length;
+            const expandedN = subnetInfo.hosts.length;
+            if (manualN === 0 && patternN === 0) {
+                el.hidden = true;
+                el.innerHTML = '';
+                return;
+            }
+            el.hidden = false;
+            const parts = [];
+            if (manualN > 0) {
+                parts.push(`<span class="mix-pill mix-pill-host">单机 <strong>${manualN}</strong></span>`);
+            }
+            if (patternN > 0) {
+                parts.push(`<span class="mix-pill mix-pill-net">网段 <strong>${patternN}</strong> 条 · 展开 <strong>${expandedN}</strong> 台</span>`);
+            }
+            if (subnetInfo.invalid.length) {
+                parts.push(`<span class="mix-pill mix-pill-bad">未识别网段 <strong>${subnetInfo.invalid.length}</strong>: ${escapeHtml(subnetInfo.invalid.join(', '))}</span>`);
+            }
+            el.innerHTML = parts.join('');
+        }
+
         function refreshUpdateSelectionPreview() {
-            const subnetInfo = getSubnetTargetsFromForm();
-            const entries = buildUpdateTargetEntries(getSelectedDevices(), getManualTargetsFromForm(), subnetInfo.hosts);
+            const mixed = getMixedTargetsFromForm();
+            const subnetInfo = parseSubnetTargetsText(mixed.subnetPatterns.join('\n'));
+            const entries = buildUpdateTargetEntries(getSelectedDevices(), mixed.manual, subnetInfo.hosts);
             elements.updateHeading.textContent = `批量安装 / 更新 · ${entries.length} 台目标`;
             elements.updateSubheading.textContent = subnetInfo.invalid.length
                 ? `存在未识别网段: ${subnetInfo.invalid.join(', ')}`
                 : 'Dashboard 会先生成最新更新包，再逐台通过 SSH / Telnet 探测版本；未安装则首装，旧版本则更新，已是新版本则跳过。';
             renderUpdateTargets(entries);
+            refreshMixedTargetsSummary(mixed, subnetInfo);
             elements.btnUpdateStart.disabled = state.updateJobStatus === 'queued' || state.updateJobStatus === 'running'
                 ? true
                 : entries.length === 0 || subnetInfo.invalid.length > 0;
@@ -4465,8 +4583,13 @@
                 ? profile.telnet_password
                 : (telnetCredential?.password || DEFAULT_REMOTE_PASSWORD);
             elements.updateCredentialCandidates.value = profile.credential_candidates_text || '';
-            elements.updateSubnetTargets.value = profile.subnet_targets || '';
-            elements.updateManualTargets.value = '';
+            // mixed_targets is the new single-input field; fall back to the legacy
+            // subnet_targets profile entry (manual_targets was never persisted) for
+            // backward compatibility with profiles saved before the merge.
+            const mixedSeed = (profile.mixed_targets !== undefined && profile.mixed_targets !== null)
+                ? profile.mixed_targets
+                : (profile.subnet_targets || '');
+            elements.updateMixedTargets.value = mixedSeed;
         }
 
         function collectUpdateForm() {
@@ -4487,7 +4610,7 @@
                 telnet_port: Number(elements.updateTelnetPort.value || 23),
                 telnet_password: elements.updateTelnetPassword.value,
                 credential_candidates_text: elements.updateCredentialCandidates.value,
-                subnet_targets: elements.updateSubnetTargets.value.trim(),
+                mixed_targets: elements.updateMixedTargets.value.trim(),
             };
             if (elements.updateRemember.checked) {
                 saveUpdateProfile(profile);
@@ -5436,13 +5559,11 @@
 
         async function startBatchUpdate() {
             const selectedDevices = getSelectedDevices();
-            const manualTargets = getManualTargetsFromForm();
-            const subnetInfo = getSubnetTargetsFromForm();
+            const mixed = getMixedTargetsFromForm();
+            const manualTargets = mixed.manual;
+            const subnetPatterns = mixed.subnetPatterns;
+            const subnetInfo = parseSubnetTargetsText(subnetPatterns.join('\n'));
             const credentialInfo = parseCredentialCandidatesText(elements.updateCredentialCandidates.value);
-            const subnetPatterns = String(elements.updateSubnetTargets.value || '')
-                .split(/[\s,，;；]+/)
-                .map((item) => item.trim())
-                .filter(Boolean);
             if (subnetInfo.invalid.length) {
                 showToast(`无效网段: ${subnetInfo.invalid.join(', ')}`);
                 return;
@@ -6149,8 +6270,7 @@
             if (event.target.closest('#update-history-popover') || event.target.closest('#btn-update-history')) return;
             closeUpdateHistoryPopover();
         });
-        elements.updateSubnetTargets.addEventListener('input', refreshUpdateSelectionPreview);
-        elements.updateManualTargets.addEventListener('input', refreshUpdateSelectionPreview);
+        elements.updateMixedTargets.addEventListener('input', refreshUpdateSelectionPreview);
         elements.btnOpenRemotes.addEventListener('click', openRemoteModal);
         elements.btnRemoteClose.addEventListener('click', closeRemoteModal);
         elements.btnRemoteSave.addEventListener('click', saveRemoteFromForm);
