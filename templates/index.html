@@ -2490,6 +2490,16 @@
             .update-job-indicator .indicator-cancel { padding: 8px 14px; }
         }
 
+        .summary-sparkline-wrap {
+            margin-top: 6px;
+            line-height: 0;
+        }
+        .summary-sparkline {
+            width: 100%;
+            height: 18px;
+            opacity: 0.55;
+        }
+
         /* ===================================================
            Connection-lost banner
         ==================================================== */
@@ -6448,6 +6458,61 @@
             if (!id) return;
             setRemoteEnabled(id, cb.checked);
         });
+
+        /* ====== Summary card sparklines ====== */
+        const SUMMARY_HISTORY_LIMIT = 60;   // ~2min at the active 2s cadence
+        const summaryHistory = [];
+
+        function recordSummarySample(summary) {
+            summaryHistory.push({
+                ts: Date.now() / 1000,
+                device_count: Number(summary.device_count) || 0,
+                avg_cpu: Number(summary.avg_cpu_usage_percent) || 0,
+                high_cpu: Number(summary.high_cpu_count) || 0,
+                gpu_count: Number(summary.gpu_count) || 0,
+                ax_count: Number(summary.ax_count) || 0,
+            });
+            while (summaryHistory.length > SUMMARY_HISTORY_LIMIT) summaryHistory.shift();
+        }
+
+        function summarySparklineSVG(values, color) {
+            if (!values || values.length < 2) return '';
+            const width = 160; const height = 20;
+            const maxV = Math.max(1, ...values);
+            const minV = Math.min(0, ...values);
+            const range = (maxV - minV) || 1;
+            const maxX = values.length - 1;
+            const points = values.map((v, i) => {
+                const x = maxX === 0 ? 0 : (i / maxX) * width;
+                const y = height - ((v - minV) / range) * height;
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+            }).join(' ');
+            return `<svg class="summary-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                <polyline fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" points="${points}"></polyline>
+            </svg>`;
+        }
+
+        const __sparklineOrigRenderSummary = renderSummary;
+        renderSummary = function sparklineRenderSummary(summary) {
+            __sparklineOrigRenderSummary(summary);
+            recordSummarySample(summary);
+            const cards = elements.summaryGrid.children;
+            if (cards.length < 4) return;
+            const seriesByCard = [
+                summaryHistory.map((s) => s.device_count),
+                summaryHistory.map((s) => s.avg_cpu),
+                summaryHistory.map((s) => s.high_cpu),
+                summaryHistory.map((s) => s.gpu_count + s.ax_count),
+            ];
+            const colorByCard = ['#0f766e', '#0f766e', '#b54231', '#1f7a8c'];
+            for (let i = 0; i < 4; i++) {
+                const wrap = document.createElement('div');
+                wrap.className = 'summary-sparkline-wrap';
+                wrap.innerHTML = summarySparklineSVG(seriesByCard[i], colorByCard[i]);
+                cards[i].appendChild(wrap);
+            }
+        };
+        /* ====== /Summary card sparklines ====== */
 
         /* ====== Background update-job tracking ====== */
         const LAST_UPDATE_JOB_KEY = 'broadcast.axera.last_update_job.v1';
