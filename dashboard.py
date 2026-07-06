@@ -1339,7 +1339,7 @@ def create_manual_target_snapshot(host, default_user="root", source="manual"):
         "ip": host,
         "display_name": host,
         "default_user": clean_text(default_user, "root") or "root",
-        "device_type": "远程安装目标",
+        "device_type": "远程目标",
         "device_kind": "subnet_target" if source == "subnet" else "manual_target",
         "os_name": "待连接",
         "source": source,
@@ -1361,7 +1361,7 @@ def normalize_target_hosts(raw_hosts):
     return hosts
 
 
-def build_update_job_public(job_id, targets, strategy, parallelism):
+def build_update_job_public(job_id, targets, strategy, parallelism, operation="install_update"):
     return {
         "job_id": job_id,
         "status": "queued",
@@ -1370,6 +1370,7 @@ def build_update_job_public(job_id, targets, strategy, parallelism):
         "started_at": None,
         "finished_at": None,
         "strategy": strategy,
+        "operation": operation,
         "parallelism": parallelism,
         "target_count": len(targets),
         "completed_count": 0,
@@ -1489,33 +1490,43 @@ def mark_remaining_targets_cancelled(job_id):
         recompute_update_job_counts(job)
 
 
-def build_update_bundle(job_id):
+def build_update_bundle(job_id, operation="install_update"):
     job_root = os.path.join(UPDATE_JOBS_ROOT, job_id)
     os.makedirs(job_root, exist_ok=True)
 
-    build_script = os.path.join(APP_ROOT, "build.sh")
-    result = subprocess.run(
-        ["bash", build_script],
-        cwd=APP_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=900,
-        check=False,
-    )
-    build_output = (result.stdout or "") + (result.stderr or "")
-    if result.returncode != 0:
-        raise RuntimeError(f"build.sh failed with exit code {result.returncode}\n{tail_text(build_output)}")
+    build_output = ""
+    bundle_version = None
+    package_files = [
+        "install.sh",
+        "README.md",
+    ]
+
+    if operation != "uninstall":
+        build_script = os.path.join(APP_ROOT, "build.sh")
+        result = subprocess.run(
+            ["bash", build_script],
+            cwd=APP_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+        build_output = (result.stdout or "") + (result.stderr or "")
+        if result.returncode != 0:
+            raise RuntimeError(f"build.sh failed with exit code {result.returncode}\n{tail_text(build_output)}")
+
+        bundle_version = datetime.now().strftime("%Y%m%d-%H%M%S")
+        package_files = [
+            "install.sh",
+            "build.sh",
+            "device_broadcast.cpp",
+            "S90device_broadcast",
+            "device_monitor.service",
+            "README.md",
+        ]
 
     archive_path = os.path.join(job_root, "device_broadcast_update.tar.gz")
     bundle_root = "broadcast.axera_update"
-    package_files = [
-        "install.sh",
-        "build.sh",
-        "device_broadcast.cpp",
-        "S90device_broadcast",
-        "device_monitor.service",
-        "README.md",
-    ]
 
     with tarfile.open(archive_path, "w:gz") as archive:
         for relative_path in package_files:
@@ -1523,18 +1534,19 @@ def build_update_bundle(job_id):
             if os.path.exists(absolute_path):
                 archive.add(absolute_path, arcname=os.path.join(bundle_root, relative_path))
 
-        dist_dir = os.path.join(APP_ROOT, "dist")
-        if os.path.isdir(dist_dir):
-            for entry in sorted(os.listdir(dist_dir)):
-                absolute_path = os.path.join(dist_dir, entry)
-                if os.path.isfile(absolute_path):
-                    archive.add(absolute_path, arcname=os.path.join(bundle_root, "dist", entry))
+        if operation != "uninstall":
+            dist_dir = os.path.join(APP_ROOT, "dist")
+            if os.path.isdir(dist_dir):
+                for entry in sorted(os.listdir(dist_dir)):
+                    absolute_path = os.path.join(dist_dir, entry)
+                    if os.path.isfile(absolute_path):
+                        archive.add(absolute_path, arcname=os.path.join(bundle_root, "dist", entry))
 
     return {
         "job_root": job_root,
         "archive_path": archive_path,
         "token": uuid.uuid4().hex,
-        "version": datetime.now().strftime("%Y%m%d-%H%M%S"),
+        "version": bundle_version,
         "build_output": tail_text(build_output),
     }
 
@@ -2086,8 +2098,50 @@ def run_script_over_ssh(client, script_text, timeout_seconds):
     return collect_paramiko_command_output(stdout.channel, timeout_seconds)
 
 
-def decide_remote_action(probe, bundle_version):
+def normalize_update_operation(value):
+    operation = clean_text(value, "install_update").lower()
+    if operation in ("", "install", "update", "install_update"):
+        return "install_update"
+    if operation in ("uninstall", "remove"):
+        return "uninstall"
+    raise ValueError("unsupported_operation")
+
+
+def update_operation_label(operation):
+    return "卸载" if normalize_update_operation(operation) == "uninstall" else "安装 / 更新"
+
+
+def update_action_label(action):
+    return {
+        "install": "安装",
+        "update": "更新",
+        "uninstall": "卸载",
+        "skip": "跳过",
+    }.get(clean_text(action).lower(), "")
+
+
+def build_transport_action_message(transport, action):
+    transport_label = "SSH" if clean_text(transport).lower() == "ssh" else "Telnet"
+    action_label = update_action_label(action) or "执行"
+    return f"{transport_label} {action_label}完成"
+
+
+def decide_remote_action(probe, bundle_version, operation="install_update"):
+    operation = normalize_update_operation(operation)
     remote_version = clean_text(probe.get("package_version"))
+    if operation == "uninstall":
+        if not probe.get("installed"):
+            return {
+                "action": "skip",
+                "message": "未检测到 agent，跳过卸载",
+                "detected_version": remote_version,
+            }
+        version_note = f"版本 {remote_version}" if remote_version else "已安装 agent"
+        return {
+            "action": "uninstall",
+            "message": f"检测到 {version_note}，准备卸载",
+            "detected_version": remote_version,
+        }
     if not probe.get("installed"):
         return {
             "action": "install",
@@ -2113,7 +2167,7 @@ def decide_remote_action(probe, bundle_version):
     }
 
 
-def build_remote_install_script(workdir, archive_path, login_user, use_sudo, sudo_password, bundle_version):
+def build_remote_install_script(workdir, archive_path, login_user, use_sudo, sudo_password, bundle_version, operation):
     workdir_q = shlex.quote(workdir)
     archive_q = shlex.quote(archive_path)
     bundle_dir_q = shlex.quote(os.path.join(workdir, "broadcast.axera_update"))
@@ -2121,6 +2175,7 @@ def build_remote_install_script(workdir, archive_path, login_user, use_sudo, sud
     use_sudo_q = shlex.quote("1" if use_sudo else "0")
     sudo_password_q = shlex.quote(sudo_password or "")
     bundle_version_q = shlex.quote(bundle_version or "")
+    operation_q = shlex.quote(normalize_update_operation(operation))
 
     return f"""set -eu
 WORKDIR={workdir_q}
@@ -2130,6 +2185,7 @@ LOGIN_USER={login_user_q}
 USE_SUDO={use_sudo_q}
 SUDO_PASSWORD={sudo_password_q}
 PACKAGE_VERSION={bundle_version_q}
+OPERATION={operation_q}
 
 extract_archive() {{
     if command -v tar >/dev/null 2>&1; then
@@ -2149,19 +2205,23 @@ run_install() {{
     chmod +x install.sh build.sh >/dev/null 2>&1 || true
     export DEVICE_BROADCAST_USER="$LOGIN_USER"
     export DEVICE_BROADCAST_PACKAGE_VERSION="$PACKAGE_VERSION"
+    INSTALL_ARGS=""
+    if [ "$OPERATION" = "uninstall" ]; then
+        INSTALL_ARGS="uninstall"
+    fi
     if [ "$(id -u)" -eq 0 ]; then
-        sh ./install.sh
+        sh ./install.sh $INSTALL_ARGS
         return $?
     fi
     if [ "$USE_SUDO" = "1" ] && command -v sudo >/dev/null 2>&1; then
         if [ -n "$SUDO_PASSWORD" ]; then
-            printf '%s\\n' "$SUDO_PASSWORD" | sudo -S env DEVICE_BROADCAST_USER="$DEVICE_BROADCAST_USER" DEVICE_BROADCAST_PACKAGE_VERSION="$DEVICE_BROADCAST_PACKAGE_VERSION" sh ./install.sh
+            printf '%s\\n' "$SUDO_PASSWORD" | sudo -S env DEVICE_BROADCAST_USER="$DEVICE_BROADCAST_USER" DEVICE_BROADCAST_PACKAGE_VERSION="$DEVICE_BROADCAST_PACKAGE_VERSION" sh ./install.sh $INSTALL_ARGS
         else
-            sudo env DEVICE_BROADCAST_USER="$DEVICE_BROADCAST_USER" DEVICE_BROADCAST_PACKAGE_VERSION="$DEVICE_BROADCAST_PACKAGE_VERSION" sh ./install.sh
+            sudo env DEVICE_BROADCAST_USER="$DEVICE_BROADCAST_USER" DEVICE_BROADCAST_PACKAGE_VERSION="$DEVICE_BROADCAST_PACKAGE_VERSION" sh ./install.sh $INSTALL_ARGS
         fi
         return $?
     fi
-    sh ./install.sh
+    sh ./install.sh $INSTALL_ARGS
 }}
 
 mkdir -p "$WORKDIR"
@@ -2467,7 +2527,7 @@ def probe_remote_over_telnet(client):
     return parse_remote_probe_output(output)
 
 
-def execute_update_over_ssh(target, ssh_config, sudo_config, bundle):
+def execute_update_over_ssh(target, ssh_config, sudo_config, bundle, operation="install_update"):
     username = clean_text(ssh_config.get("username")) or target.get("default_user") or "root"
     password = ssh_config.get("password") or None
     port = safe_int(ssh_config.get("port")) or 22
@@ -2482,7 +2542,7 @@ def execute_update_over_ssh(target, ssh_config, sudo_config, bundle):
     client = connect_ssh_client(target["ip"], username=username, port=port, password=password)
     try:
         probe = probe_remote_over_ssh(client)
-        action = decide_remote_action(probe, bundle["version"])
+        action = decide_remote_action(probe, bundle.get("version"), operation)
         if action["action"] == "skip":
             return {
                 "transport": "ssh",
@@ -2499,7 +2559,8 @@ def execute_update_over_ssh(target, ssh_config, sudo_config, bundle):
             login_user=username,
             use_sudo=use_sudo,
             sudo_password=sudo_password,
-            bundle_version=bundle["version"],
+            bundle_version=bundle.get("version"),
+            operation=operation,
         )
 
         _, stdout, _ = client.exec_command(f"mkdir -p {shlex.quote(remote_workdir)}")
@@ -2515,12 +2576,12 @@ def execute_update_over_ssh(target, ssh_config, sudo_config, bundle):
 
         rc, output = run_script_over_ssh(client, script, UPDATE_REMOTE_TIMEOUT_SECONDS)
         if rc != 0:
-            raise RuntimeError(output or f"remote install exited with {rc}")
+            raise RuntimeError(output or f"remote command exited with {rc}")
         return {
             "transport": "ssh",
             "status": "success",
             "action": action["action"],
-            "message": "SSH 安装完成" if action["action"] == "install" else "SSH 更新完成",
+            "message": build_transport_action_message("ssh", action["action"]),
             "detected_version": action.get("detected_version", ""),
             "log": tail_text("\n".join(filter(None, [probe.get("raw_output", ""), output]))),
         }
@@ -2528,7 +2589,7 @@ def execute_update_over_ssh(target, ssh_config, sudo_config, bundle):
         client.close()
 
 
-def execute_update_over_telnet(target, telnet_config, sudo_config, bundle):
+def execute_update_over_telnet(target, telnet_config, sudo_config, bundle, operation="install_update"):
     username = clean_text(telnet_config.get("username"), "")
     password = telnet_config.get("password") or ""
     port = safe_int(telnet_config.get("port")) or 23
@@ -2548,7 +2609,8 @@ def execute_update_over_telnet(target, telnet_config, sudo_config, bundle):
         login_user=username or target.get("default_user") or "root",
         use_sudo=use_sudo,
         sudo_password=sudo_password,
-        bundle_version=bundle["version"],
+        bundle_version=bundle.get("version"),
+        operation=operation,
     )
 
     client = ScriptedTelnetClient(
@@ -2562,7 +2624,7 @@ def execute_update_over_telnet(target, telnet_config, sudo_config, bundle):
         client.connect()
         ready_output = client.wait_for_probe(UPDATE_TELNET_READY_TIMEOUT_SECONDS)
         probe = probe_remote_over_telnet(client)
-        action = decide_remote_action(probe, bundle["version"])
+        action = decide_remote_action(probe, bundle.get("version"), operation)
         if action["action"] == "skip":
             return {
                 "transport": "telnet",
@@ -2585,7 +2647,7 @@ def execute_update_over_telnet(target, telnet_config, sudo_config, bundle):
             "transport": "telnet",
             "status": "success",
             "action": action["action"],
-            "message": "Telnet 安装完成" if action["action"] == "install" else "Telnet 更新完成",
+            "message": build_transport_action_message("telnet", action["action"]),
             "detected_version": action.get("detected_version", ""),
             "log": tail_text(
                 "\n".join(filter(None, [ready_output, probe.get("raw_output", ""), download_output, install_output]))
@@ -2745,6 +2807,7 @@ def run_quick_scan_for_target(target, strategy, ssh_config, telnet_config):
 
 def run_update_for_target(
     target,
+    operation,
     strategy,
     ssh_config,
     telnet_config,
@@ -2779,9 +2842,9 @@ def run_update_for_target(
             }
             try:
                 if transport == "ssh":
-                    result = execute_update_over_ssh(target, config, sudo_config, bundle_payload)
+                    result = execute_update_over_ssh(target, config, sudo_config, bundle_payload, operation=operation)
                 else:
-                    result = execute_update_over_telnet(target, config, sudo_config, bundle_payload)
+                    result = execute_update_over_telnet(target, config, sudo_config, bundle_payload, operation=operation)
                 attempts.append({"transport": transport, "ok": True, "message": f"{label} · {result['message']}"})
                 result["attempts"] = attempts
                 return result
@@ -2808,6 +2871,7 @@ def run_update_for_target(
 def run_update_job(
     job_id,
     targets,
+    operation,
     strategy,
     parallelism,
     ssh_config,
@@ -2816,6 +2880,7 @@ def run_update_job(
     sudo_config,
     dashboard_origin,
 ):
+    operation_label = update_operation_label(operation)
     with update_lock:
         job = update_jobs.get(job_id)
         if not job:
@@ -2874,7 +2939,7 @@ def run_update_job(
                     job_id,
                     target["ip"],
                     status="running",
-                    message=f"{scan_result.get('summary') or '已发现在线机器'}，等待安装 / 更新",
+                    message=f"{scan_result.get('summary') or '已发现在线机器'}，等待{operation_label}",
                     attempts=attempts,
                     log=scan_result.get("summary", ""),
                 )
@@ -2901,7 +2966,7 @@ def run_update_job(
         return
 
     try:
-        bundle = build_update_bundle(job_id)
+        bundle = build_update_bundle(job_id, operation)
     except Exception as exc:
         mark_update_job_failed(job_id, str(exc))
         return
@@ -2932,7 +2997,7 @@ def run_update_job(
                 job_id,
                 target["ip"],
                 status="running",
-                message="正在判断版本并安装 / 更新",
+                message=f"正在判断版本并{operation_label}",
                 finished_at=None,
                 transport=None,
                 log="",
@@ -2940,6 +3005,7 @@ def run_update_job(
             future = install_executor.submit(
                 run_update_for_target,
                 target,
+                operation,
                 strategy,
                 dict(ssh_config),
                 dict(telnet_config),
@@ -2972,7 +3038,7 @@ def run_update_job(
                     log=result.get("log", ""),
                 )
             except Exception as exc:
-                message = str(exc) or "更新失败"
+                message = str(exc) or f"{operation_label}失败"
                 attempts = []
                 lines = [line.strip() for line in message.splitlines() if line.strip()]
                 for line in lines:
@@ -2984,7 +3050,7 @@ def run_update_job(
                     target["ip"],
                     status="failed",
                     transport=None,
-                    message=lines[-1] if lines else "更新失败",
+                    message=lines[-1] if lines else f"{operation_label}失败",
                     finished_at=time.time(),
                     attempts=attempts,
                     log=tail_text(message),
@@ -3353,6 +3419,7 @@ def api_update_list_jobs():
                     "started_at": job.get("started_at"),
                     "finished_at": job.get("finished_at"),
                     "strategy": job.get("strategy"),
+                    "operation": job.get("operation", "install_update"),
                     "target_count": job.get("target_count", 0),
                     "completed_count": job.get("completed_count", 0),
                     "success_count": job.get("success_count", 0),
@@ -3390,6 +3457,10 @@ def api_update_create_job():
     strategy = clean_text(body.get("strategy"), "auto").lower()
     if strategy not in ("auto", "ssh", "telnet"):
         return jsonify({"error": "unsupported_strategy"}), 400
+    try:
+        operation = normalize_update_operation(body.get("operation"))
+    except ValueError:
+        return jsonify({"error": "unsupported_operation"}), 400
     if invalid_subnets:
         return jsonify({"error": "invalid_subnet_targets", "invalid": invalid_subnets}), 400
     if not target_ips and not manual_hosts and not subnet_hosts:
@@ -3461,7 +3532,7 @@ def api_update_create_job():
     parallelism = clamp_int(body.get("parallelism"), 1, UPDATE_MAX_PARALLEL, min(len(targets), UPDATE_MAX_PARALLEL))
 
     job_id = uuid.uuid4().hex
-    job = build_update_job_public(job_id, targets, strategy, parallelism)
+    job = build_update_job_public(job_id, targets, strategy, parallelism, operation)
     os.makedirs(UPDATE_JOBS_ROOT, exist_ok=True)
     with update_lock:
         update_jobs[job_id] = job
@@ -3471,6 +3542,7 @@ def api_update_create_job():
         args=(
             job_id,
             targets,
+            operation,
             strategy,
             parallelism,
             {
