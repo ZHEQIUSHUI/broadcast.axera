@@ -9,9 +9,9 @@
 - 仪表盘支持动态设备卡片、型号筛选、设备详情页、网页 SSH 终端
 - 支持多办公室聚合：可添加其他 Dashboard 作为远程源，设备卡片预览位置，并支持位置筛选
 - SSH 终端支持浏览器本地保存密码，下次可直接进入
-- 支持网页批量更新：可选 `SSH / Telnet / 自动 SSH->Telnet 回退`
-- 支持远程安装网段扫描：可输入 `10.126.35.x / 10.126.35.0/24` 自动遍历 `1-255`
-- 批量更新最终统一调用 `install.sh`，继续兼容 `systemd / init.d(S90) / rc.local / crontab / nohup`
+- 支持网页批量安装 / 更新 / 卸载：可选 `SSH / Telnet / 自动 SSH->Telnet 回退`
+- 支持远程目标网段扫描：可输入 `10.126.35.x / 10.126.35.0/24` 自动遍历 `1-255`
+- 批量任务最终统一调用 `install.sh`，继续兼容 `systemd / init.d(S90) / rc.local / crontab / nohup`
 
 ## 页面预览
 
@@ -22,9 +22,9 @@
 - 页面顶部会汇总在线设备、平均 CPU、高 CPU 设备数、GPU / AX 设备数。
 - 型号筛选支持按设备类型快速过滤，例如 `AX620Q / AX630C / AX650 / x86`。
 - 设备信息卡片会展示在线状态、IP、默认用户、架构、运行时长，以及 `CPU / 内存 / GPU / AX CMM` 指标；AX 设备还会展示 `version / chip_type / board_id` 等信息。
-- 每张卡片都可以直接进入 `详情`、`终端`、`复制 IP`，并参与批量更新或远程安装。
+- 每张卡片都可以直接进入 `详情`、`终端`、`复制 IP`，并参与批量安装、更新或卸载。
 
-### 批量安装 / 更新
+### 批量安装 / 更新 / 卸载
 
 ![批量更新截图](assets/image_2.jpg)
 
@@ -32,6 +32,7 @@
 - 网段扫描支持 `10.126.35.x`、`10.126.35.*`、`10.126.35.0/24`、`10.126.35` 这几种写法。
 - Dashboard 会先并发 `ping + SSH/Telnet 端口探测`，只在结果区展示探测到的机器，并显示扫描进度。
 - 登录成功后会自动判断目标机版本：未安装则安装，版本过旧则更新，已是最新版本则跳过。
+- 卸载模式会先探测目标机是否已安装 agent：已安装则执行卸载，未安装则自动跳过。
 - 支持 `SSH`、`Telnet`、`自动 SSH 后 Telnet`，也支持多组账号密码按顺序重试。
 
 ### 设备详细信息页
@@ -130,6 +131,18 @@ sudo ./install.sh
 - 启动 runner 路径
 - 日志路径
 - 当前采用的常驻方式
+
+## 卸载设备端 Agent
+
+```bash
+sudo ./install.sh uninstall
+```
+
+卸载脚本会停止当前 agent 进程，并清理：
+
+- `systemd / init.d / rc.local / crontab / nohup runner`
+- 已安装的 `device_broadcast` 二进制与版本标记
+- 对应的状态目录与日志目录
 
 ## 启动 Dashboard
 
@@ -253,7 +266,7 @@ curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
 
 ### 多办公室聚合（远程 Dashboard）
 
-如果每个办公室都启动一套 Dashboard，可以在任意一台 Dashboard 上把其他办公室的设备列表聚合到当前页面显示（远程设备为只读展示，终端 / 群发更新建议在对应办公室的 Dashboard 上操作）。
+如果每个办公室都启动一套 Dashboard，可以在任意一台 Dashboard 上把其他办公室的设备列表聚合到当前页面显示（远程设备为只读展示，终端 / 批量任务建议在对应办公室的 Dashboard 上操作）。
 
 页面操作：
 
@@ -263,7 +276,7 @@ curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
 
 说明：
 
-- 远程设备在当前页面为**只读展示**（显示为 `Remote`），终端 / 群发更新建议在对应办公室的 Dashboard 上操作。
+- 远程设备在当前页面为**只读展示**（显示为 `Remote`），终端 / 批量任务建议在对应办公室的 Dashboard 上操作。
 - 如果你升级代码后访问 `GET /api/remotes` 仍返回 `404`，说明服务还在跑旧代码：请重启 Dashboard（例如 `sudo systemctl restart dashboard.service`，或重新运行 `python3 dashboard.py`）。
 
 可选环境变量（标记当前 Dashboard 所在位置）：
@@ -301,13 +314,14 @@ curl -s -X POST http://<dashboard-ip>:25000/api/devices/query \
 
 如果你是直接运行 `python3 dashboard.py`（非 Docker），需要额外准备一个可访问的 `webssh2` 服务；如果使用本项目的 Docker 镜像，则镜像已内置并默认启动。Dashboard 侧只负责按 `WEBSSH2_URL_TEMPLATE` 生成跳转地址。
 
-网页批量更新说明：
+网页批量安装 / 更新 / 卸载说明：
 
-- 在页面中勾选多台设备后，可直接发起“群发更新”
-- 远程安装界面支持输入网段，例如 `10.126.35.x`，Dashboard 会自动尝试登录该网段 `1-255` 主机
-- Dashboard 会先在本机执行 `build.sh`，然后生成最新更新包
+- 在页面中勾选多台设备后，可直接发起“群发更新”或“批量卸载”
+- 远程安装 / 卸载界面支持输入网段，例如 `10.126.35.x`，Dashboard 会自动尝试登录该网段 `1-255` 主机
+- 安装 / 更新模式下，Dashboard 会先在本机执行 `build.sh`，然后生成最新更新包
 - 登录成功后会先探测目标机是否已安装 agent 以及已记录的包版本
 - 未安装则自动安装；版本缺失或低于当前包版本则更新；已是新版本则跳过
+- 卸载模式下，已安装则执行 `install.sh uninstall`，未安装则跳过
 - SSH 设备使用 `SFTP + install.sh`
 - Telnet 设备会通过 `wget/curl/busybox wget/python` 从 Dashboard 拉取更新包，再执行 `install.sh`
 - `install.sh` 仍会自动判断目标机是否能注册服务，不能时自动回退到 `nohup`

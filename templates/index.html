@@ -409,6 +409,14 @@
             box-shadow: var(--shadow-1);
         }
 
+        .update-mode-toggle {
+            margin-top: 12px;
+        }
+
+        .update-mode-toggle button {
+            min-width: 118px;
+        }
+
         /* ===================================================
            Filters & batch
         ==================================================== */
@@ -3200,13 +3208,14 @@
             <div class="hero-meta">
                 <div class="pill">当前筛选 <strong id="visible-count">0</strong></div>
                 <div class="pill">已选 <strong id="selected-count">0</strong></div>
-                <div class="pill">群发更新 <strong>SSH / Telnet / install.sh</strong></div>
+                <div class="pill">批量运维 <strong>SSH / Telnet / install.sh</strong></div>
             </div>
             <div class="batch-actions">
                 <button class="btn-secondary" id="btn-select-all" type="button">全选在线设备</button>
                 <button class="btn-secondary" id="btn-clear-selection" type="button">清空选择</button>
                 <button class="btn-secondary" id="btn-open-install" type="button">远程安装</button>
                 <button class="btn-primary" id="btn-open-update" type="button">群发更新</button>
+                <button class="btn-danger" id="btn-open-uninstall" type="button">批量卸载</button>
             </div>
         </section>
 
@@ -3362,8 +3371,12 @@
         <div class="update-shell update-shell-v2">
             <div class="update-top">
                 <div>
-                    <h3 id="update-heading">群发更新</h3>
+                    <h3 id="update-heading">批量安装 / 更新</h3>
                     <p id="update-subheading">使用当前 Dashboard 主机生成最新更新包，并批量下发到所选设备。</p>
+                    <div class="density-toggle update-mode-toggle" role="group" aria-label="操作模式">
+                        <button id="btn-update-mode-install" class="active" type="button">安装 / 更新</button>
+                        <button id="btn-update-mode-uninstall" type="button">卸载</button>
+                    </div>
                 </div>
                 <button class="btn-secondary" id="btn-update-close" type="button">关闭</button>
             </div>
@@ -3468,7 +3481,7 @@
                         <h4>任务结果</h4>
                         <span class="update-section-hint" id="update-status-inline">任务启动后实时显示扫描进度与各台设备状态</span>
                     </header>
-                    <div class="update-status update-status-block" id="update-status">尚未启动更新任务。</div>
+                    <div class="update-status update-status-block" id="update-status">尚未启动批量任务。</div>
                     <div class="update-results" id="update-results"></div>
                 </section>
             </div>
@@ -3480,7 +3493,7 @@
                     <button class="btn-secondary" id="btn-update-history" type="button">历史任务</button>
                     <button class="btn-secondary" id="btn-update-refresh" type="button">刷新结果</button>
                     <button class="btn-danger" id="btn-update-cancel" type="button" hidden>取消任务</button>
-                    <button class="btn-primary" id="btn-update-start" type="button">开始 安装 / 更新</button>
+                    <button class="btn-primary" id="btn-update-start" type="button">开始安装 / 更新</button>
                 </div>
             </div>
         </div>
@@ -3572,6 +3585,7 @@
             pendingWebsshWindow: null,
             updateJobId: null,
             updateJobStatus: null,
+            updateOperation: 'install_update',
             updatePollTimer: null,
             remotes: [],
             remoteEditingId: null,
@@ -3617,6 +3631,8 @@
             updateTargets: document.getElementById('update-targets'),
             updateStatus: document.getElementById('update-status'),
             updateResults: document.getElementById('update-results'),
+            updateOperationInstall: document.getElementById('btn-update-mode-install'),
+            updateOperationUninstall: document.getElementById('btn-update-mode-uninstall'),
             updateStrategy: document.getElementById('update-strategy'),
             updateParallelism: document.getElementById('update-parallelism'),
             updateRemember: document.getElementById('update-remember'),
@@ -3633,6 +3649,7 @@
             btnClearSelection: document.getElementById('btn-clear-selection'),
             btnOpenInstall: document.getElementById('btn-open-install'),
             btnOpenUpdate: document.getElementById('btn-open-update'),
+            btnOpenUninstall: document.getElementById('btn-open-uninstall'),
             btnUpdateClose: document.getElementById('btn-update-close'),
             btnUpdateStart: document.getElementById('btn-update-start'),
             btnUpdateRefresh: document.getElementById('btn-update-refresh'),
@@ -3678,6 +3695,65 @@
         };
 
         elements.dashboardPort.textContent = String(window.location.port || 25000);
+
+        function normalizeUpdateOperation(value) {
+            return value === 'uninstall' ? 'uninstall' : 'install_update';
+        }
+
+        function getUpdateOperationMeta(operation = state.updateOperation) {
+            const normalized = normalizeUpdateOperation(operation);
+            if (normalized === 'uninstall') {
+                return {
+                    value: 'uninstall',
+                    title: '批量卸载',
+                    subheading: '通过当前 Dashboard 批量连接目标设备，并卸载已安装的 agent。',
+                    selectionTitle: '批量卸载',
+                    selectionSubheading: 'Dashboard 会先通过 SSH / Telnet 探测是否已安装 agent；已安装则执行卸载，未安装则自动跳过。',
+                    idleStatus: '尚未启动卸载任务。',
+                    idleResults: '<div class="empty"><h3>等待任务启动</h3><p>选择在线设备，或输入单机 IP / 网段，并填写凭据后，即可批量卸载已安装的 agent。</p></div>',
+                    emptyResults: '<div class="empty"><h3>暂无结果</h3><p>任务启动后将在这里显示每台设备的卸载过程。</p></div>',
+                    startButton: '开始卸载',
+                    selectDeviceToast: '请先选择要卸载的设备',
+                    selectTargetToast: '请先选择设备，或输入要卸载的 IP / 主机 / 网段',
+                    startedToastSelected: '批量卸载任务已启动',
+                    startedToastManual: '远程卸载任务已启动',
+                    historyLabel: '卸载',
+                    indicatorLabel: '后台卸载',
+                    doneToastPrefix: '后台卸载完成',
+                };
+            }
+            return {
+                value: 'install_update',
+                title: '批量安装 / 更新',
+                subheading: '使用当前 Dashboard 主机生成最新更新包，并批量下发到所选设备。',
+                selectionTitle: '批量安装 / 更新',
+                selectionSubheading: 'Dashboard 会先生成最新更新包，再逐台通过 SSH / Telnet 探测版本；未安装则首装，旧版本则更新，已是新版本则跳过。',
+                idleStatus: '尚未启动安装 / 更新任务。',
+                idleResults: '<div class="empty"><h3>等待任务启动</h3><p>选择在线设备，或输入单机 IP / 网段，并填写凭据后，即可自动安装、更新或跳过最新版本。</p></div>',
+                emptyResults: '<div class="empty"><h3>暂无结果</h3><p>任务启动后将在这里显示每台设备的安装 / 更新过程。</p></div>',
+                startButton: '开始安装 / 更新',
+                selectDeviceToast: '请先选择要更新的设备',
+                selectTargetToast: '请先选择设备，或输入要安装的 IP / 主机 / 网段',
+                startedToastSelected: '群发更新任务已启动',
+                startedToastManual: '远程安装 / 更新任务已启动',
+                historyLabel: '安装 / 更新',
+                indicatorLabel: '后台更新',
+                doneToastPrefix: '后台更新完成',
+            };
+        }
+
+        function setUpdateOperation(operation, opts = {}) {
+            state.updateOperation = normalizeUpdateOperation(operation);
+            const meta = getUpdateOperationMeta(state.updateOperation);
+            elements.updateOperationInstall.classList.toggle('active', meta.value === 'install_update');
+            elements.updateOperationUninstall.classList.toggle('active', meta.value === 'uninstall');
+            elements.updateHeading.textContent = meta.title;
+            elements.updateSubheading.textContent = meta.subheading;
+            elements.btnUpdateStart.textContent = meta.startButton;
+            if (opts.refresh !== false && elements.updateModal.classList.contains('open')) {
+                refreshUpdateSelectionPreview();
+            }
+        }
 
         function showToast(message) {
             elements.toast.textContent = message;
@@ -4386,7 +4462,7 @@
                 entries.push({
                     ip: host,
                     display_name: host,
-                    device_type: '远程安装目标',
+                    device_type: '远程目标',
                     os_name: '待连接',
                     source: 'manual',
                 });
@@ -4446,13 +4522,14 @@
         }
 
         function refreshUpdateSelectionPreview() {
+            const meta = getUpdateOperationMeta(state.updateOperation);
             const mixed = getMixedTargetsFromForm();
             const subnetInfo = parseSubnetTargetsText(mixed.subnetPatterns.join('\n'));
             const entries = buildUpdateTargetEntries(getSelectedDevices(), mixed.manual, subnetInfo.hosts);
-            elements.updateHeading.textContent = `批量安装 / 更新 · ${entries.length} 台目标`;
+            elements.updateHeading.textContent = `${meta.selectionTitle} · ${entries.length} 台目标`;
             elements.updateSubheading.textContent = subnetInfo.invalid.length
                 ? `存在未识别网段: ${subnetInfo.invalid.join(', ')}`
-                : 'Dashboard 会先生成最新更新包，再逐台通过 SSH / Telnet 探测版本；未安装则首装，旧版本则更新，已是新版本则跳过。';
+                : meta.selectionSubheading;
             renderUpdateTargets(entries);
             refreshMixedTargetsSummary(mixed, subnetInfo);
             elements.btnUpdateStart.disabled = state.updateJobStatus === 'queued' || state.updateJobStatus === 'running'
@@ -4478,6 +4555,7 @@
                 ? '全选本地在线设备'
                 : `全选当前筛选本地 (${visibleLocalCount})`;
             elements.btnOpenInstall.disabled = false;
+            elements.btnOpenUninstall.disabled = false;
         }
 
         function toggleDeviceSelection(deviceKey, checked) {
@@ -4557,11 +4635,12 @@
             elements.updateTargets.innerHTML = [...summaryTags, ...preview].join('');
         }
 
-        function prefillUpdateForm(devices) {
+        function prefillUpdateForm(devices, preferredOperation = null) {
             const profile = loadUpdateProfile();
             const singleDevice = devices.length === 1 ? devices[0] : null;
             const telnetCredential = singleDevice?.localCredential || null;
             const defaultParallelism = Math.min(UPDATE_MAX_PARALLEL, Math.max(1, devices.length || 1));
+            const operation = normalizeUpdateOperation(preferredOperation || profile.operation || state.updateOperation);
 
             elements.updateStrategy.value = profile.strategy || 'auto';
             elements.updateParallelism.value = String(profile.parallelism || defaultParallelism);
@@ -4590,6 +4669,7 @@
                 ? profile.mixed_targets
                 : (profile.subnet_targets || '');
             elements.updateMixedTargets.value = mixedSeed;
+            setUpdateOperation(operation, { refresh: false });
         }
 
         function collectUpdateForm() {
@@ -4598,6 +4678,7 @@
                 Math.min(UPDATE_MAX_PARALLEL, Number(elements.updateParallelism.value || 1))
             );
             const profile = {
+                operation: normalizeUpdateOperation(state.updateOperation),
                 strategy: elements.updateStrategy.value,
                 parallelism,
                 remember: elements.updateRemember.checked,
@@ -5226,6 +5307,7 @@
         function updateActionLabel(action) {
             if (action === 'install') return '安装';
             if (action === 'update') return '更新';
+            if (action === 'uninstall') return '卸载';
             if (action === 'skip') return '跳过';
             return '';
         }
@@ -5246,12 +5328,15 @@
         }
 
         function renderUpdateJob(job = null) {
+            const operation = normalizeUpdateOperation(job?.operation || state.updateOperation);
+            const meta = getUpdateOperationMeta(operation);
+            setUpdateOperation(operation, { refresh: false });
             if (!job) {
                 const subnetInfo = getSubnetTargetsFromForm();
                 state.updateJobStatus = null;
-                elements.updateStatus.textContent = '尚未启动更新任务。';
+                elements.updateStatus.textContent = meta.idleStatus;
                 elements.updateResults.classList.remove('compact');
-                elements.updateResults.innerHTML = '<div class="empty"><h3>等待任务启动</h3><p>选择在线设备，或输入单机 IP / 网段，并填写凭据后，即可自动安装、更新或跳过最新版本。</p></div>';
+                elements.updateResults.innerHTML = meta.idleResults;
                 elements.btnUpdateRefresh.disabled = !state.updateJobId;
                 elements.btnUpdateStart.disabled = buildUpdateTargetEntries().length === 0 || subnetInfo.invalid.length > 0;
                 return;
@@ -5265,6 +5350,7 @@
             elements.updateStatus.innerHTML = `
                 <div class="update-status-row">
                     <span class="status-chip ${statusClass}">${updateStatusLabel(job.status)}</span>
+                    <span>操作 ${escapeHtml(meta.historyLabel)}</span>
                     <span>完成 ${job.completed_count || 0}/${job.target_count || 0}</span>
                     <span>成功 ${job.success_count || 0}</span>
                     <span>跳过 ${job.skipped_count || 0}</span>
@@ -5316,7 +5402,7 @@
             elements.updateResults.innerHTML = results.join('') || (
                 hasSubnetTargets
                     ? '<div class="empty"><h3>扫描中</h3><p>这里会逐步显示探测到的机器；未命中的地址会折叠到上面的统计里。</p></div>'
-                    : '<div class="empty"><h3>暂无结果</h3><p>任务启动后将在这里显示每台设备的更新过程。</p></div>'
+                    : meta.emptyResults
             );
             elements.btnUpdateStart.disabled = job.status === 'queued' || job.status === 'running';
             elements.btnUpdateRefresh.disabled = false;
@@ -5341,7 +5427,7 @@
                 return payload;
             } catch (_) {
                 if (!silent) {
-                    showToast('刷新更新任务失败');
+                    showToast('刷新批量任务失败');
                 }
                 return null;
             }
@@ -5360,11 +5446,12 @@
 
         function openUpdateModal(options = {}) {
             const selectedDevices = getSelectedDevices();
+            const meta = getUpdateOperationMeta(options.operation || state.updateOperation);
             if (!selectedDevices.length && !options.allowEmptySelection) {
-                showToast('请先选择要更新的设备');
+                showToast(meta.selectDeviceToast);
                 return;
             }
-            prefillUpdateForm(selectedDevices);
+            prefillUpdateForm(selectedDevices, options.operation);
             elements.updateModal.classList.add('open');
             refreshUpdateSelectionPreview();
             if (state.updateJobId) {
@@ -5551,7 +5638,7 @@
 
         async function refreshUpdateJob() {
             if (!state.updateJobId) {
-                showToast('当前没有更新任务');
+                showToast('当前没有批量任务');
                 return;
             }
             await fetchUpdateJobStatus(state.updateJobId, false);
@@ -5564,6 +5651,8 @@
             const subnetPatterns = mixed.subnetPatterns;
             const subnetInfo = parseSubnetTargetsText(subnetPatterns.join('\n'));
             const credentialInfo = parseCredentialCandidatesText(elements.updateCredentialCandidates.value);
+            const operation = normalizeUpdateOperation(state.updateOperation);
+            const meta = getUpdateOperationMeta(operation);
             if (subnetInfo.invalid.length) {
                 showToast(`无效网段: ${subnetInfo.invalid.join(', ')}`);
                 return;
@@ -5573,7 +5662,7 @@
                 return;
             }
             if (!selectedDevices.length && !manualTargets.length && !subnetInfo.hosts.length) {
-                showToast('请先选择设备，或输入要安装的 IP / 主机 / 网段');
+                showToast(meta.selectTargetToast);
                 return;
             }
 
@@ -5585,6 +5674,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        operation,
                         targets: selectedDevices.map((device) => device.ip),
                         manual_targets: manualTargets,
                         subnet_targets: subnetPatterns,
@@ -5611,16 +5701,16 @@
 
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.error || payload.message || '创建更新任务失败');
+                    throw new Error(payload.error || payload.message || '创建任务失败');
                 }
 
                 state.updateJobId = payload.job_id;
                 renderUpdateJob(payload);
                 pollUpdateJob(payload.job_id);
-                showToast(manualTargets.length || subnetInfo.hosts.length ? '远程安装 / 更新任务已启动' : '群发更新任务已启动');
+                showToast(manualTargets.length || subnetInfo.hosts.length ? meta.startedToastManual : meta.startedToastSelected);
             } catch (error) {
                 elements.btnUpdateStart.disabled = false;
-                showToast(error.message || '创建更新任务失败');
+                showToast(error.message || '创建任务失败');
             }
         }
 
@@ -6193,11 +6283,14 @@
         document.getElementById('btn-terminal-connect').addEventListener('click', connectFromForm);
         elements.btnSelectAll.addEventListener('click', selectAllDevices);
         elements.btnClearSelection.addEventListener('click', clearSelection);
-        elements.btnOpenInstall.addEventListener('click', () => openUpdateModal({ allowEmptySelection: true }));
-        elements.btnOpenUpdate.addEventListener('click', () => openUpdateModal({ allowEmptySelection: false }));
+        elements.btnOpenInstall.addEventListener('click', () => openUpdateModal({ allowEmptySelection: true, operation: 'install_update' }));
+        elements.btnOpenUpdate.addEventListener('click', () => openUpdateModal({ allowEmptySelection: false, operation: 'install_update' }));
+        elements.btnOpenUninstall.addEventListener('click', () => openUpdateModal({ allowEmptySelection: true, operation: 'uninstall' }));
         elements.btnUpdateClose.addEventListener('click', closeUpdateModal);
         elements.btnUpdateStart.addEventListener('click', startBatchUpdate);
         elements.btnUpdateRefresh.addEventListener('click', refreshUpdateJob);
+        elements.updateOperationInstall.addEventListener('click', () => setUpdateOperation('install_update'));
+        elements.updateOperationUninstall.addEventListener('click', () => setUpdateOperation('uninstall'));
         elements.btnUpdateCancel.addEventListener('click', () => {
             if (!state.updateJobId) return;
             cancelUpdateJob(state.updateJobId);
@@ -6220,8 +6313,9 @@
                     const ago = j.created_at ? formatRelativeAgo(now - j.created_at) : '';
                     const statusClass = updateStatusClass(j.status);
                     const statusLabel = updateStatusLabel(j.status);
+                    const meta = getUpdateOperationMeta(j.operation);
                     const isCurrent = state.updateJobId === j.job_id;
-                    const stats = `成功 ${j.success_count || 0} · 跳过 ${j.skipped_count || 0} · 失败 ${j.failed_count || 0}`;
+                    const stats = `${meta.historyLabel} · 成功 ${j.success_count || 0} · 跳过 ${j.skipped_count || 0} · 失败 ${j.failed_count || 0}`;
                     return `<div class="update-history-row${isCurrent ? ' is-current' : ''}" data-job-id="${escapeHtml(j.job_id)}">
                         <span class="status-chip ${statusClass}">${escapeHtml(statusLabel)}</span>
                         <div class="update-history-meta">
@@ -7304,6 +7398,7 @@
             const failed = Number(job.failed_count || 0);
             const phase = job.status === 'queued' ? '准备中' : '执行中';
             const cancelling = job.cancelled ? ' · 取消中' : '';
+            const meta = getUpdateOperationMeta(job.operation);
             el.hidden = false;
             el.classList.add('is-running');
             el.classList.toggle('is-failed', failed > 0);
@@ -7312,7 +7407,7 @@
             if (main) {
                 main.innerHTML = `
                     <span class="dot"></span>
-                    <span class="label">后台${phase}${cancelling}</span>
+                    <span class="label">${escapeHtml(meta.indicatorLabel)}${phase}${cancelling}</span>
                     <strong>${done}/${total}</strong>
                     ${failed ? `<span class="fail-pill">失败 ${failed}</span>` : ''}
                     <span class="hint">点击查看</span>
@@ -7346,11 +7441,12 @@
                     const failed = Number(job.failed_count || 0);
                     const skipped = Number(job.skipped_count || 0);
                     const total = Number(job.target_count || 0);
+                    const meta = getUpdateOperationMeta(job.operation);
                     const verdict = job.status === 'success' ? '✓ 全部成功'
                         : job.status === 'partial_success' ? '部分成功'
                         : job.status === 'failed' ? '✗ 失败'
                         : '已跳过';
-                    showToast(`后台更新完成 · ${verdict} · ${success}/${total}（跳过 ${skipped} · 失败 ${failed}）`);
+                    showToast(`${meta.doneToastPrefix} · ${verdict} · ${success}/${total}（跳过 ${skipped} · 失败 ${failed}）`);
                 }
             } else if (!job) {
                 updateJobIndicator(null);
@@ -7413,6 +7509,7 @@
 
         syncSelectedCount();
         syncDetailEditorButtons();
+        setUpdateOperation(state.updateOperation, { refresh: false });
         renderUpdateJob(null);
 
         /* ====== Visibility-aware refresh scheduler + connection-lost banner ====== */

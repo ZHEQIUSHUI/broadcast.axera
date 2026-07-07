@@ -41,6 +41,12 @@ log() {
     printf '%s\n' "$*"
 }
 
+home_for_user() {
+    USER_NAME="$1"
+    [ -n "$USER_NAME" ] || return 1
+    awk -F: -v name="$USER_NAME" '$1 == name {print $6; exit}' /etc/passwd 2>/dev/null
+}
+
 write_version_file() {
     TARGET_PATH="$1"
     [ -n "$PACKAGE_VERSION" ] || return 0
@@ -490,7 +496,208 @@ install_nohup_only() {
     PERSISTENCE_MODE="nohup"
 }
 
-main() {
+remove_path() {
+    TARGET_PATH="$1"
+    [ -n "$TARGET_PATH" ] || return 0
+    rm -f "$TARGET_PATH" >/dev/null 2>&1 || true
+}
+
+remove_dir() {
+    TARGET_DIR="$1"
+    [ -n "$TARGET_DIR" ] || return 0
+    rm -rf "$TARGET_DIR" >/dev/null 2>&1 || true
+}
+
+remove_marker_from_file() {
+    TARGET_FILE="$1"
+    MARKER_TEXT="$2"
+    [ -f "$TARGET_FILE" ] || return 0
+    FILTERED_FILE="$TMP_DIR/filtered_$(basename "$TARGET_FILE").$$"
+    grep -Fv "$MARKER_TEXT" "$TARGET_FILE" > "$FILTERED_FILE" 2>/dev/null || true
+    cat "$FILTERED_FILE" > "$TARGET_FILE" 2>/dev/null || true
+    rm -f "$FILTERED_FILE"
+}
+
+remove_crontab_marker_for_user() {
+    USER_NAME="$1"
+    [ -n "$USER_NAME" ] || return 0
+    command -v crontab >/dev/null 2>&1 || return 0
+
+    if [ "$(id -u)" -eq 0 ]; then
+        CURRENT_CRONTAB="$(crontab -u "$USER_NAME" -l 2>/dev/null || true)"
+    elif [ "$USER_NAME" = "$CURRENT_USER" ]; then
+        CURRENT_CRONTAB="$(crontab -l 2>/dev/null || true)"
+    else
+        return 0
+    fi
+
+    CLEANED_CRONTAB="$(printf '%s\n' "$CURRENT_CRONTAB" | grep -Fv "$CRON_MARKER" || true)"
+
+    if [ -n "$CLEANED_CRONTAB" ]; then
+        if [ "$(id -u)" -eq 0 ]; then
+            printf '%s\n' "$CLEANED_CRONTAB" | crontab -u "$USER_NAME" - >/dev/null 2>&1 || true
+        else
+            printf '%s\n' "$CLEANED_CRONTAB" | crontab - >/dev/null 2>&1 || true
+        fi
+    else
+        if [ "$(id -u)" -eq 0 ]; then
+            crontab -u "$USER_NAME" -r >/dev/null 2>&1 || true
+        else
+            crontab -r >/dev/null 2>&1 || true
+        fi
+    fi
+}
+
+system_install_present() {
+    for TARGET_PATH in \
+        "/etc/systemd/system/$SERVICE_NAME" \
+        "/etc/init.d/$INIT_SCRIPT_NAME" \
+        "/usr/bin/$APP_NAME" \
+        "/customer/bin/$APP_NAME" \
+        "/customer/dell/bin/$APP_NAME" \
+        "/var/lib/$APP_NAME" \
+        "/var/log/$APP_NAME" \
+        "/customer/$APP_NAME" \
+        "/customer/dell/$APP_NAME" \
+        "/etc/$APP_NAME.version"
+    do
+        if [ -e "$TARGET_PATH" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+stop_all_instances() {
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
+        systemctl disable "$SERVICE_NAME" >/dev/null 2>&1 || true
+        systemctl --user stop "$SERVICE_NAME" >/dev/null 2>&1 || true
+        systemctl --user disable "$SERVICE_NAME" >/dev/null 2>&1 || true
+    fi
+
+    if [ -x "/etc/init.d/$INIT_SCRIPT_NAME" ]; then
+        "/etc/init.d/$INIT_SCRIPT_NAME" stop >/dev/null 2>&1 || true
+    fi
+
+    for RUNNER in \
+        "/var/lib/$APP_NAME/${APP_NAME}_runner.sh" \
+        "/customer/$APP_NAME/${APP_NAME}_runner.sh" \
+        "/customer/dell/$APP_NAME/${APP_NAME}_runner.sh" \
+        "/tmp/$APP_NAME/state/${APP_NAME}_runner.sh"
+    do
+        if [ -x "$RUNNER" ]; then
+            "$RUNNER" stop >/dev/null 2>&1 || true
+        fi
+    done
+
+    for USER_HOME in \
+        "${HOME:-}" \
+        "$(home_for_user "$CURRENT_USER" 2>/dev/null || true)" \
+        "$(home_for_user "$TARGET_USER" 2>/dev/null || true)" \
+        "$(home_for_user "${SUDO_USER:-}" 2>/dev/null || true)" \
+        "$(home_for_user "root" 2>/dev/null || true)"
+    do
+        [ -n "$USER_HOME" ] || continue
+        RUNNER="$USER_HOME/.local/share/$APP_NAME/${APP_NAME}_runner.sh"
+        if [ -x "$RUNNER" ]; then
+            "$RUNNER" stop >/dev/null 2>&1 || true
+        fi
+    done
+
+    pkill -f "$APP_NAME" >/dev/null 2>&1 || true
+    killall "$APP_NAME" >/dev/null 2>&1 || true
+}
+
+remove_system_level_artifacts() {
+    if command -v systemctl >/dev/null 2>&1; then
+        remove_path "/etc/systemd/system/$SERVICE_NAME"
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+
+    if [ -x "/etc/init.d/$INIT_SCRIPT_NAME" ]; then
+        if command -v update-rc.d >/dev/null 2>&1; then
+            update-rc.d -f "$INIT_SCRIPT_NAME" remove >/dev/null 2>&1 || true
+        elif command -v chkconfig >/dev/null 2>&1; then
+            chkconfig --del "$INIT_SCRIPT_NAME" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    remove_path "/etc/init.d/$INIT_SCRIPT_NAME"
+    remove_marker_from_file "/etc/rc.local" "$CRON_MARKER"
+
+    remove_path "/usr/bin/$APP_NAME"
+    remove_path "/usr/bin/$APP_NAME.version"
+    remove_path "/customer/bin/$APP_NAME"
+    remove_path "/customer/bin/$APP_NAME.version"
+    remove_path "/customer/dell/bin/$APP_NAME"
+    remove_path "/customer/dell/bin/$APP_NAME.version"
+    remove_path "/etc/$APP_NAME.version"
+
+    remove_dir "/var/lib/$APP_NAME"
+    remove_dir "/var/log/$APP_NAME"
+    remove_dir "/customer/$APP_NAME"
+    remove_dir "/customer/dell/$APP_NAME"
+    remove_dir "/tmp/$APP_NAME"
+
+    remove_crontab_marker_for_user "root"
+    remove_crontab_marker_for_user "$CURRENT_USER"
+    remove_crontab_marker_for_user "$TARGET_USER"
+    remove_crontab_marker_for_user "${SUDO_USER:-}"
+}
+
+remove_user_level_artifacts() {
+    USER_HOME="$1"
+    [ -n "$USER_HOME" ] || return 0
+
+    UNIT_PATH="$USER_HOME/.config/systemd/user/$SERVICE_NAME"
+    if [ -f "$UNIT_PATH" ]; then
+        remove_path "$UNIT_PATH"
+        if [ "$USER_HOME" = "${HOME:-}" ] && command -v systemctl >/dev/null 2>&1; then
+            systemctl --user daemon-reload >/dev/null 2>&1 || true
+        fi
+    fi
+
+    remove_path "$USER_HOME/.local/bin/$APP_NAME"
+    remove_path "$USER_HOME/.local/bin/$APP_NAME.version"
+    remove_dir "$USER_HOME/.local/share/$APP_NAME"
+    remove_dir "$USER_HOME/.local/state/$APP_NAME"
+}
+
+uninstall_main() {
+    if [ "$(id -u)" -ne 0 ] && system_install_present; then
+        log "Detected system-wide install artifacts. Re-run with sudo to uninstall them."
+        exit 1
+    fi
+
+    log "Uninstalling $APP_NAME ..."
+
+    stop_all_instances
+
+    if [ "$(id -u)" -eq 0 ]; then
+        remove_system_level_artifacts
+    else
+        remove_crontab_marker_for_user "$CURRENT_USER"
+    fi
+
+    for USER_HOME in \
+        "${HOME:-}" \
+        "$(home_for_user "$CURRENT_USER" 2>/dev/null || true)" \
+        "$(home_for_user "$TARGET_USER" 2>/dev/null || true)" \
+        "$(home_for_user "${SUDO_USER:-}" 2>/dev/null || true)" \
+        "$(home_for_user "root" 2>/dev/null || true)"
+    do
+        [ -n "$USER_HOME" ] || continue
+        remove_user_level_artifacts "$USER_HOME"
+    done
+
+    remove_path "/tmp/${APP_NAME}.pid"
+
+    log
+    log "Uninstall completed."
+}
+
+install_main() {
     log "Installing $APP_NAME ..."
     log "Detected run user: $TARGET_USER"
     log "Detected device kind: $(detect_device_kind), arch: $(uname -m), libc: $(detect_libc)"
@@ -540,6 +747,22 @@ main() {
     if [ -n "$PACKAGE_VERSION" ]; then
         log "Package version: $PACKAGE_VERSION"
     fi
+}
+
+main() {
+    ACTION="$(printf '%s' "${1:-install}" | tr '[:upper:]' '[:lower:]')"
+    case "$ACTION" in
+        install|"")
+            install_main
+            ;;
+        uninstall|remove)
+            uninstall_main
+            ;;
+        *)
+            log "usage: $0 [install|uninstall]"
+            exit 1
+            ;;
+    esac
 }
 
 main "$@"
