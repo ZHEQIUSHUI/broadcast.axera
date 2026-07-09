@@ -1412,6 +1412,55 @@
             color: var(--muted);
         }
 
+        .update-progress-track.is-done > span {
+            /* Give a clear visual signal that the run is fully finished */
+            background: linear-gradient(90deg, #2f8f6e, #19a299);
+        }
+
+        .job-tally-row {
+            gap: 6px !important;
+        }
+
+        .job-tally {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: var(--r-pill);
+            border: 1px solid var(--line);
+            background: rgba(255, 252, 245, 0.94);
+            color: var(--muted);
+            font-size: 11.5px;
+            line-height: 1.2;
+        }
+        .job-tally strong {
+            color: var(--ink);
+            font-family: "IBM Plex Mono", monospace;
+            font-weight: 700;
+        }
+        .job-tally-installed {
+            background: var(--accent-soft);
+            color: var(--accent);
+            border-color: var(--accent-tint);
+        }
+        .job-tally-installed strong { color: var(--accent); }
+        .job-tally-updated {
+            background: var(--info-soft);
+            color: var(--info);
+            border-color: rgba(31, 122, 140, 0.22);
+        }
+        .job-tally-updated strong { color: var(--info); }
+        .job-tally-skipped {
+            background: rgba(20, 30, 40, 0.05);
+            color: var(--muted);
+        }
+        .job-tally-failed {
+            background: var(--danger-soft);
+            color: var(--danger);
+            border-color: rgba(181, 66, 49, 0.22);
+        }
+        .job-tally-failed strong { color: var(--danger); }
+
         .status-chip {
             display: inline-flex;
             align-items: center;
@@ -5327,6 +5376,32 @@
             };
         }
 
+        // Breakdown of the terminal statuses into human-facing action buckets.
+        // We derive it client-side because backend only stores overall counters.
+        function computeUpdateActionBreakdown(job) {
+            const targets = job?.targets || [];
+            const b = { installed: 0, updated: 0, uninstalled: 0, skipped: 0, failed: 0, cancelled: 0 };
+            for (const t of targets) {
+                const action = t && t.action;
+                const status = t && t.status;
+                if (status === 'success') {
+                    if (action === 'install')        b.installed  += 1;
+                    else if (action === 'update')    b.updated    += 1;
+                    else if (action === 'uninstall') b.uninstalled += 1;
+                    else                             b.installed  += 1;
+                } else if (status === 'skipped') {
+                    // A skipped-with-message 已取消 is a cancellation; otherwise it's a real skip
+                    const msg = String(t.message || '');
+                    const wasCancelled = (t.attempts || []).some((a) => a && a.transport === 'cancel')
+                        || msg.includes('已取消');
+                    if (wasCancelled) b.cancelled += 1; else b.skipped += 1;
+                } else if (status === 'failed') {
+                    b.failed += 1;
+                }
+            }
+            return b;
+        }
+
         function renderUpdateJob(job = null) {
             const operation = normalizeUpdateOperation(job?.operation || state.updateOperation);
             const meta = getUpdateOperationMeta(operation);
@@ -5346,21 +5421,40 @@
             state.updateJobStatus = job.status || null;
             const statusClass = updateStatusClass(job.status);
             const scanStats = computeUpdateScanStats(job);
-            const scanPercent = scanStats.targetCount ? Math.max(0, Math.min(100, (scanStats.scannedCount / scanStats.targetCount) * 100)) : 0;
+            const breakdown = computeUpdateActionBreakdown(job);
+            const isTerminal = jobIsTerminal(job.status);
+            const completed = Number(job.completed_count || 0);
+            const total = Number(job.target_count || 0);
+            // Overall progress = terminal state jumps to 100%. During run it's
+            // completed / total, which reflects every phase (scan + install / update / uninstall).
+            const overallPercent = isTerminal
+                ? 100
+                : (total ? Math.max(0, Math.min(100, (completed / total) * 100)) : 0);
+            const breakdownChips = [];
+            if (breakdown.installed)   breakdownChips.push(`<span class="job-tally job-tally-installed">新增 <strong>${breakdown.installed}</strong></span>`);
+            if (breakdown.updated)     breakdownChips.push(`<span class="job-tally job-tally-updated">更新 <strong>${breakdown.updated}</strong></span>`);
+            if (breakdown.uninstalled) breakdownChips.push(`<span class="job-tally job-tally-updated">卸载 <strong>${breakdown.uninstalled}</strong></span>`);
+            if (breakdown.skipped)     breakdownChips.push(`<span class="job-tally job-tally-skipped">跳过 <strong>${breakdown.skipped}</strong></span>`);
+            if (breakdown.cancelled)   breakdownChips.push(`<span class="job-tally job-tally-skipped">已取消 <strong>${breakdown.cancelled}</strong></span>`);
+            if (breakdown.failed)      breakdownChips.push(`<span class="job-tally job-tally-failed">失败 <strong>${breakdown.failed}</strong></span>`);
+            const breakdownRow = breakdownChips.length
+                ? `<div class="update-status-row job-tally-row">${breakdownChips.join('')}</div>`
+                : '';
+            const progressNote = isTerminal
+                ? `已完成 ${completed}/${total}${scanStats.targetCount ? ` · 扫描到 ${scanStats.activeCount} 台在线` : ''}`
+                : `进度 ${completed}/${total} · 扫描到 ${scanStats.activeCount} 台在线`;
             elements.updateStatus.innerHTML = `
                 <div class="update-status-row">
                     <span class="status-chip ${statusClass}">${updateStatusLabel(job.status)}</span>
                     <span>操作 ${escapeHtml(meta.historyLabel)}</span>
-                    <span>完成 ${job.completed_count || 0}/${job.target_count || 0}</span>
-                    <span>成功 ${job.success_count || 0}</span>
-                    <span>跳过 ${job.skipped_count || 0}</span>
-                    <span>失败 ${job.failed_count || 0}</span>
+                    <span>完成 ${completed}/${total}</span>
                     ${job.bundle_version ? `<span>包版本 ${escapeHtml(job.bundle_version)}</span>` : ''}
                     ${job.error ? `<span>${escapeHtml(job.error)}</span>` : ''}
                 </div>
+                ${breakdownRow}
                 <div class="update-progress">
-                    <div class="update-progress-track"><span style="width:${scanPercent.toFixed(1)}%;"></span></div>
-                    <div class="update-progress-note">扫描进度 ${scanStats.scannedCount}/${scanStats.targetCount}，已发现 ${scanStats.activeCount} 台</div>
+                    <div class="update-progress-track ${isTerminal ? 'is-done' : ''}"><span style="width:${overallPercent.toFixed(1)}%;"></span></div>
+                    <div class="update-progress-note">${progressNote}</div>
                 </div>
             `;
 
