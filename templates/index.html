@@ -2785,14 +2785,15 @@
             top: 0;
             z-index: 190;
             display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 0 8px 0 0;
-            min-height: 34px;
+            align-items: stretch;
+            gap: 10px;
+            padding: 6px 10px 6px 0;
+            min-height: 48px;
             border-bottom: 1px solid var(--line);
             background: linear-gradient(90deg, var(--accent-soft), rgba(15, 118, 110, 0.04));
             overflow: hidden;
-            font-size: 13px;
+            font-size: 15px;
+            line-height: 1.4;
         }
         .notification-ticker[hidden] { display: none; }
         .notification-ticker[data-level="warn"] {
@@ -2806,13 +2807,15 @@
         }
 
         .notification-ticker-track {
-            display: inline-flex;
-            gap: 44px;
             flex: 1 1 auto;
+            display: flex;
+            align-items: center;
+            gap: 44px;
             white-space: nowrap;
-            animation: notification-scroll 40s linear infinite;
+            animation: notification-scroll 45s linear infinite;
             padding-left: 100%;
             will-change: transform;
+            min-width: 0;
         }
         .notification-ticker:hover .notification-ticker-track {
             animation-play-state: paused;
@@ -2826,47 +2829,54 @@
         .notification-ticker-item {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             color: var(--ink);
+            flex-shrink: 0;
         }
         .notification-ticker-item .lvl {
             display: inline-flex;
             align-items: center;
-            gap: 5px;
-            padding: 2px 9px;
+            padding: 3px 11px;
             border-radius: var(--r-pill);
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 700;
             background: var(--accent);
             color: #fff;
-            line-height: 1.2;
+            line-height: 1.25;
+            letter-spacing: 0.03em;
+            flex-shrink: 0;
         }
         .notification-ticker-item[data-level="warn"] .lvl { background: var(--warn); }
         .notification-ticker-item[data-level="danger"] .lvl { background: var(--danger); }
         .notification-ticker-item[data-level="success"] .lvl { background: var(--success); }
         .notification-ticker-item[data-level="info"] .lvl { background: var(--accent); }
         .notification-ticker-item strong {
-            font-weight: 600;
+            font-size: 15px;
+            font-weight: 700;
             color: var(--ink);
+            line-height: 1.4;
         }
         .notification-ticker-item .body {
+            font-size: 14px;
             color: var(--muted);
             font-weight: 400;
+            line-height: 1.4;
         }
         .notification-ticker-item .dismiss {
             border: none;
             background: rgba(20, 30, 40, 0.06);
             color: var(--muted);
-            width: 18px;
-            height: 18px;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
-            font-size: 12px;
+            font-size: 14px;
             line-height: 1;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             padding: 0;
+            flex-shrink: 0;
         }
         .notification-ticker-item .dismiss:hover {
             background: rgba(20, 30, 40, 0.14);
@@ -2877,14 +2887,15 @@
 
         .notification-ticker-close {
             flex-shrink: 0;
-            width: 24px;
-            height: 24px;
+            align-self: center;
+            width: 28px;
+            height: 28px;
             padding: 0;
             border-radius: 50%;
             border: 1px solid var(--line);
             background: rgba(255, 252, 245, 0.72);
             color: var(--muted);
-            font-size: 15px;
+            font-size: 17px;
             line-height: 1;
             cursor: pointer;
         }
