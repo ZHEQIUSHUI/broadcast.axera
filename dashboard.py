@@ -833,6 +833,7 @@ def normalize_notification_record(record, now_ts=None):
         "title": normalize_notification_text(record.get("title"), limit=120),
         "body": normalize_notification_text(record.get("body"), limit=400),
         "enabled": bool(record.get("enabled", True)),
+        "popup": bool(record.get("popup", False)),
         "expires_at": expires_at,  # 0 == never
         "expires_at_iso": clean_text(record.get("expires_at_iso"))
             or (datetime.fromtimestamp(expires_at).isoformat(timespec="seconds") if expires_at else ""),
@@ -3388,6 +3389,7 @@ def api_notifications_upsert():
 
     level = normalize_notification_level(body.get("level"))
     enabled = bool(body.get("enabled", True))
+    popup = bool(body.get("popup", False))
     ttl_seconds = safe_int(body.get("ttl_seconds"))
     expires_at_raw = safe_int(body.get("expires_at"))
     now_ts = int(time.time())
@@ -3408,6 +3410,7 @@ def api_notifications_upsert():
                 "body": text_body,
                 "level": level,
                 "enabled": enabled,
+                "popup": popup,
                 "expires_at": expires_at,
                 "expires_at_iso": datetime.fromtimestamp(expires_at).isoformat(timespec="seconds") if expires_at else "",
                 "updated_at": now_iso(),
@@ -3427,6 +3430,7 @@ def api_notifications_upsert():
                 "body": text_body,
                 "level": level,
                 "enabled": enabled,
+                "popup": popup,
                 "expires_at": expires_at,
                 "expires_at_iso": datetime.fromtimestamp(expires_at).isoformat(timespec="seconds") if expires_at else "",
                 "created_at": now_ts,

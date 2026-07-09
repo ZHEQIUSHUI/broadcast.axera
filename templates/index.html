@@ -2978,6 +2978,115 @@
         .lvl-chip[data-level="success"] { background: var(--success); }
         .lvl-chip[data-level="info"] { background: var(--accent); }
 
+        /* ===================================================
+           Notification popup modal (per-notification acknowledgement)
+        ==================================================== */
+        .notification-popup-modal {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: var(--bg-overlay);
+            backdrop-filter: blur(6px);
+            z-index: 260;
+            animation: overlayIn 0.18s ease;
+        }
+        .notification-popup-modal[hidden] { display: none; }
+
+        .notification-popup-shell {
+            width: min(560px, 100%);
+            background: var(--bg-panel);
+            border: 1px solid var(--line);
+            border-radius: var(--r-xl);
+            box-shadow: var(--shadow-modal);
+            padding: 22px 24px 18px;
+            display: grid;
+            gap: 12px;
+            animation: shellIn 0.22s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .notification-popup-shell::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto 0;
+            height: 4px;
+            background: var(--accent);
+        }
+        .notification-popup-shell[data-level="warn"]::before { background: var(--warn); }
+        .notification-popup-shell[data-level="danger"]::before { background: var(--danger); }
+        .notification-popup-shell[data-level="success"]::before { background: var(--success); }
+        .notification-popup-shell[data-level="info"]::before { background: var(--accent); }
+
+        .notification-popup-top {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .notification-popup-meta {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .notification-popup-title {
+            margin: 4px 0 0;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--ink);
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+        .notification-popup-body {
+            font-size: 14px;
+            color: var(--muted-soft);
+            line-height: 1.55;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            max-height: 40vh;
+            overflow-y: auto;
+        }
+        .notification-popup-body:empty { display: none; }
+
+        .notification-popup-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 6px;
+        }
+        .notification-popup-queue {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .notification-popup-queue:empty { display: none; }
+
+        .notification-popup-toggle {
+            font-size: 12px;
+            color: var(--muted);
+            padding: 4px 0;
+            line-height: 1.5;
+        }
+        .notification-popup-toggle input { flex-shrink: 0; }
+        .notification-popup-toggle span { color: var(--muted); }
+
+        .lvl-chip.has-popup::after {
+            content: " 🔔";
+            font-size: 11px;
+            filter: grayscale(1) brightness(1.4);
+        }
+        .notification-row-meta .popup-flag {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: var(--r-pill);
+            background: rgba(31, 122, 140, 0.12);
+            color: var(--info);
+            font-weight: 700;
+        }
+
         .notification-empty {
             padding: 28px 20px;
             border: 1px dashed var(--line-strong);
@@ -3921,7 +4030,11 @@
                         </label>
                         <label>
                             正文（可选）
-                            <textarea id="notification-body" maxlength="400" placeholder="补充说明，仅在管理面板可看，滚动条不显示"></textarea>
+                            <textarea id="notification-body" maxlength="400" placeholder="补充说明，会在滚动条与弹窗里都展示"></textarea>
+                        </label>
+                        <label class="opt-check notification-popup-toggle">
+                            <input id="notification-popup" type="checkbox">
+                            <span>新到时弹窗提醒（其他已经打开的浏览器 30s 内自动弹；未打开的浏览器下次刷新时弹一次；同一浏览器不重复）</span>
                         </label>
                     </div>
                 </section>
@@ -3935,6 +4048,21 @@
                     <button class="btn-secondary" id="btn-notification-reset" type="button">清空</button>
                     <button class="btn-primary" id="btn-notification-save" type="button">保存</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="notification-popup-modal" id="notification-popup-modal" hidden>
+        <div class="notification-popup-shell" role="dialog" aria-modal="true" aria-labelledby="notification-popup-title">
+            <div class="notification-popup-top">
+                <span class="lvl-chip" id="notification-popup-level" data-level="info">通知</span>
+                <span class="notification-popup-meta" id="notification-popup-meta"></span>
+            </div>
+            <h3 class="notification-popup-title" id="notification-popup-title"></h3>
+            <div class="notification-popup-body" id="notification-popup-body"></div>
+            <div class="notification-popup-actions">
+                <span class="notification-popup-queue" id="notification-popup-queue"></span>
+                <button class="btn-primary" id="btn-notification-popup-ack" type="button">知道了</button>
             </div>
         </div>
     </div>
@@ -4083,6 +4211,15 @@
             btnNotificationClose: document.getElementById('btn-notification-close'),
             btnNotificationSave: document.getElementById('btn-notification-save'),
             btnNotificationReset: document.getElementById('btn-notification-reset'),
+            notificationPopupCheckbox: document.getElementById('notification-popup'),
+            notificationPopupModal: document.getElementById('notification-popup-modal'),
+            notificationPopupShell: document.querySelector('.notification-popup-shell'),
+            notificationPopupTitle: document.getElementById('notification-popup-title'),
+            notificationPopupBody: document.getElementById('notification-popup-body'),
+            notificationPopupLevel: document.getElementById('notification-popup-level'),
+            notificationPopupMeta: document.getElementById('notification-popup-meta'),
+            notificationPopupQueue: document.getElementById('notification-popup-queue'),
+            btnNotificationPopupAck: document.getElementById('btn-notification-popup-ack'),
             btnRemoteClose: document.getElementById('btn-remote-close'),
             remoteList: document.getElementById('remote-list'),
             remoteOrigin: document.getElementById('remote-origin'),
@@ -7951,10 +8088,13 @@
         /* ====== Top-edge notification ticker + management ====== */
         const NOTIFICATION_DISMISSED_KEY = 'broadcast.axera.notification_dismissed.v1';
         const NOTIFICATION_TICKER_HIDDEN_KEY = 'broadcast.axera.notification_ticker_hidden.v1';
+        const NOTIFICATION_POPUP_SEEN_KEY = 'broadcast.axera.notification_popup_seen.v1';
         const NOTIFICATION_POLL_INTERVAL = 30000;
 
         state.notifications = [];
         state.notificationEditingId = null;
+        state.notificationPopupQueue = [];
+        state.notificationPopupCurrent = null;
         let __notificationPollTimer = null;
 
         function notificationDismissedIds() {
@@ -8032,6 +8172,89 @@
             track.innerHTML = [...items, ...items].join('');
         }
 
+        // ---- popup queue (per-browser "seen" tracking) ----
+        function notificationPopupSeenIds() {
+            try {
+                const raw = localStorage.getItem(NOTIFICATION_POPUP_SEEN_KEY) || '[]';
+                const arr = JSON.parse(raw);
+                return Array.isArray(arr) ? arr.filter(Boolean).map(String) : [];
+            } catch (_) { return []; }
+        }
+        function notificationPopupMarkSeen(id) {
+            if (!id) return;
+            const ids = new Set(notificationPopupSeenIds());
+            ids.add(String(id));
+            try { localStorage.setItem(NOTIFICATION_POPUP_SEEN_KEY, JSON.stringify([...ids])); } catch (_) {}
+        }
+        // Trim seen list so it doesn't grow unbounded — only keep ids still active
+        function notificationPopupPruneSeen(activeIds) {
+            try {
+                const activeSet = new Set(activeIds.map(String));
+                const kept = notificationPopupSeenIds().filter((id) => activeSet.has(id));
+                localStorage.setItem(NOTIFICATION_POPUP_SEEN_KEY, JSON.stringify(kept));
+            } catch (_) {}
+        }
+
+        function updateNotificationPopupUI() {
+            const modal = elements.notificationPopupModal;
+            const shell = elements.notificationPopupShell;
+            const current = state.notificationPopupCurrent;
+            if (!modal) return;
+            if (!current) {
+                modal.hidden = true;
+                return;
+            }
+            modal.hidden = false;
+            const level = String(current.level || 'info');
+            const label = ({ info: '通知', success: '完成', warn: '注意', danger: '紧急' })[level] || '通知';
+            shell.dataset.level = level;
+            elements.notificationPopupLevel.textContent = label;
+            elements.notificationPopupLevel.dataset.level = level;
+            elements.notificationPopupTitle.textContent = current.title || '';
+            elements.notificationPopupBody.textContent = current.body || '';
+            // Meta: created time + optional expiry
+            const nowSec = Date.now() / 1000;
+            const parts = [];
+            if (current.created_at) parts.push(formatRelativeAgo(nowSec - Number(current.created_at)) + '发布');
+            if (current.expires_at && Number(current.expires_at) > nowSec) {
+                parts.push(formatRelativeAgo(Number(current.expires_at) - nowSec).replace('前', '后') + '结束');
+            }
+            elements.notificationPopupMeta.textContent = parts.join(' · ');
+            const remainingInQueue = state.notificationPopupQueue.length;
+            elements.notificationPopupQueue.textContent = remainingInQueue
+                ? `还有 ${remainingInQueue} 条待查看`
+                : '';
+        }
+
+        function acknowledgeCurrentPopup() {
+            const cur = state.notificationPopupCurrent;
+            if (cur && cur.id) notificationPopupMarkSeen(cur.id);
+            state.notificationPopupCurrent = null;
+            if (state.notificationPopupQueue.length) {
+                state.notificationPopupCurrent = state.notificationPopupQueue.shift();
+            }
+            updateNotificationPopupUI();
+        }
+
+        function queueNotificationPopups() {
+            const active = (state.notifications || []).filter((n) => n && n.popup && n.enabled);
+            const seen = new Set(notificationPopupSeenIds());
+            // Prune seen list to only active ids so the store doesn't grow forever
+            notificationPopupPruneSeen(active.map((n) => n.id));
+            const pending = active
+                .filter((n) => !seen.has(String(n.id)))
+                .filter((n) => state.notificationPopupCurrent?.id !== n.id)
+                .filter((n) => !state.notificationPopupQueue.some((q) => q.id === n.id));
+            if (!pending.length) return;
+            // Newest first, since a stale one would be less relevant
+            pending.sort((a, b) => (Number(b.created_at) || 0) - (Number(a.created_at) || 0));
+            state.notificationPopupQueue.push(...pending);
+            if (!state.notificationPopupCurrent) {
+                state.notificationPopupCurrent = state.notificationPopupQueue.shift() || null;
+            }
+            updateNotificationPopupUI();
+        }
+
         async function refreshNotifications(silent) {
             try {
                 const response = await fetch('/api/notifications');
@@ -8039,6 +8262,7 @@
                 const payload = await response.json();
                 state.notifications = Array.isArray(payload.notifications) ? payload.notifications : [];
                 renderNotificationTicker();
+                queueNotificationPopups();
                 if (elements.notificationModal.classList.contains('open')) {
                     // Reload full list (including inactive) when the admin modal is open
                     await refreshNotificationsAdmin(true);
@@ -8091,6 +8315,9 @@
                 const createdMeta = n.created_at
                     ? `<span>${escapeHtml(formatRelativeAgo(nowSec - Number(n.created_at)))}创建</span>`
                     : '';
+                const popupChip = n.popup
+                    ? '<span class="popup-flag">🔔 弹窗</span>'
+                    : '';
                 return `
                     <div class="notification-row${enabled ? '' : ' is-inactive'}" data-notification-id="${escapeHtml(n.id)}">
                         <div class="notification-row-info">
@@ -8102,6 +8329,7 @@
                             <div class="notification-row-meta">
                                 ${expiryMeta}
                                 ${createdMeta}
+                                ${popupChip}
                             </div>
                         </div>
                         <div class="notification-row-actions">
@@ -8124,6 +8352,7 @@
             if (elements.notificationTitle) elements.notificationTitle.value = '';
             if (elements.notificationBody) elements.notificationBody.value = '';
             if (elements.notificationEnabled) elements.notificationEnabled.checked = true;
+            if (elements.notificationPopupCheckbox) elements.notificationPopupCheckbox.checked = false;
         }
 
         function openNotificationModal() {
@@ -8148,6 +8377,7 @@
                 title,
                 body,
                 enabled: !!elements.notificationEnabled.checked,
+                popup: !!(elements.notificationPopupCheckbox && elements.notificationPopupCheckbox.checked),
                 ttl_seconds: Number(elements.notificationTtl.value || 0),
             };
             if (state.notificationEditingId) payload.id = state.notificationEditingId;
@@ -8192,6 +8422,7 @@
                 body: source.body || '',
                 level: source.level || 'info',
                 enabled: !!enabled,
+                popup: !!source.popup,
             };
             // Preserve original expiry if present so toggling doesn't extend it
             if (source.expires_at) payload.expires_at = source.expires_at;
@@ -8234,6 +8465,7 @@
             elements.notificationTitle.value = record.title || '';
             elements.notificationBody.value = record.body || '';
             elements.notificationEnabled.checked = !!record.enabled;
+            if (elements.notificationPopupCheckbox) elements.notificationPopupCheckbox.checked = !!record.popup;
             // TTL select is a duration, not an absolute time. When editing, default to 0 (keep as is)
             // and rely on the fact that we omit ttl_seconds unless changed -> backend keeps existing.
             elements.notificationTtl.value = '0';
@@ -8296,6 +8528,17 @@
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && elements.notificationModal.classList.contains('open')) {
                 closeNotificationModal();
+            }
+        });
+
+        // Popup modal: 知道了 button + ESC
+        if (elements.btnNotificationPopupAck) {
+            elements.btnNotificationPopupAck.addEventListener('click', acknowledgeCurrentPopup);
+        }
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            if (elements.notificationPopupModal && !elements.notificationPopupModal.hidden) {
+                acknowledgeCurrentPopup();
             }
         });
 
