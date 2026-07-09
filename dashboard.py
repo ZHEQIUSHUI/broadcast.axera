@@ -44,7 +44,10 @@ UPDATE_JOBS_ROOT = os.path.join(RUNTIME_ROOT, "update_jobs")
 DEVICE_METADATA_PATH = os.path.join(RUNTIME_ROOT, "device_metadata.json")
 DEVICE_OCCUPANCY_PATH = os.path.join(RUNTIME_ROOT, "device_occupancy.json")
 REMOTE_DASHBOARDS_PATH = os.path.join(RUNTIME_ROOT, "remote_dashboards.json")
+NOTIFICATIONS_PATH = os.path.join(RUNTIME_ROOT, "notifications.json")
 DEVICE_OCCUPANCY_TTL_SECONDS = max(60, min(86400, int(os.getenv("DEVICE_OCCUPANCY_TTL_SECONDS", "86400"))))
+NOTIFICATION_MAX_ACTIVE = int(os.getenv("NOTIFICATION_MAX_ACTIVE", "20"))
+NOTIFICATION_LEVELS = ("info", "success", "warn", "danger")
 
 DASHBOARD_SITE_LABEL = (os.getenv("DASHBOARD_SITE_LABEL", "本地") or "本地").strip() or "本地"
 DASHBOARD_SITE_NOTE = (os.getenv("DASHBOARD_SITE_NOTE", "") or "").strip()
@@ -75,6 +78,8 @@ device_metadata = {}
 metadata_lock = threading.Lock()
 device_occupancy = {}
 occupancy_lock = threading.Lock()
+notifications = {}
+notifications_lock = threading.Lock()
 remote_dashboards = {}
 remote_lock = threading.Lock()
 
@@ -801,6 +806,101 @@ def persist_remote_dashboards_records_locked():
     )
 
 
+def normalize_notification_level(value):
+    text = clean_text(value, "info").lower()
+    return text if text in NOTIFICATION_LEVELS else "info"
+
+
+def normalize_notification_text(value, limit=400):
+    text = clean_text(value)
+    if len(text) > limit:
+        text = text[:limit]
+    return text
+
+
+def normalize_notification_record(record, now_ts=None):
+    if not isinstance(record, dict):
+        return None
+    now_ts = int(now_ts or time.time())
+    expires_at = safe_int(record.get("expires_at"))
+    if expires_at is None:
+        expires_at = 0
+    if expires_at and expires_at <= now_ts:
+        return None
+    return {
+        "id": clean_text(record.get("id")),
+        "level": normalize_notification_level(record.get("level")),
+        "title": normalize_notification_text(record.get("title"), limit=120),
+        "body": normalize_notification_text(record.get("body"), limit=400),
+        "enabled": bool(record.get("enabled", True)),
+        "expires_at": expires_at,  # 0 == never
+        "expires_at_iso": clean_text(record.get("expires_at_iso"))
+            or (datetime.fromtimestamp(expires_at).isoformat(timespec="seconds") if expires_at else ""),
+        "created_at": safe_int(record.get("created_at")) or now_ts,
+        "created_at_iso": clean_text(record.get("created_at_iso")) or now_iso(),
+        "updated_at": clean_text(record.get("updated_at")) or now_iso(),
+    }
+
+
+def load_notifications_records():
+    if not os.path.exists(NOTIFICATIONS_PATH):
+        return {}
+    try:
+        with open(NOTIFICATIONS_PATH, "r", encoding="utf-8") as stream:
+            payload = json.load(stream)
+    except Exception as exc:
+        print(f"failed to load notifications: {exc}")
+        return {}
+    if isinstance(payload, dict) and isinstance(payload.get("records"), dict):
+        records = payload["records"]
+    elif isinstance(payload, dict):
+        records = payload
+    else:
+        return {}
+    normalized = {}
+    now_ts = int(time.time())
+    for key, record in records.items():
+        normalized_record = normalize_notification_record(record, now_ts=now_ts)
+        if normalized_record:
+            normalized_record["id"] = str(key)
+            normalized[str(key)] = normalized_record
+    return normalized
+
+
+def persist_notifications_records_locked():
+    atomic_write_json(
+        NOTIFICATIONS_PATH,
+        {
+            "version": 1,
+            "updated_at": now_iso(),
+            "records": notifications,
+        },
+    )
+
+
+def prune_expired_notifications_locked(now_ts=None):
+    now_ts = int(now_ts or time.time())
+    dropped = [key for key, rec in notifications.items() if not normalize_notification_record(rec, now_ts=now_ts)]
+    for key in dropped:
+        notifications.pop(key, None)
+    return bool(dropped)
+
+
+def list_notifications(include_inactive=False):
+    now_ts = int(time.time())
+    with notifications_lock:
+        changed = prune_expired_notifications_locked(now_ts=now_ts)
+        if changed:
+            persist_notifications_records_locked()
+        items = []
+        for record in notifications.values():
+            if not include_inactive and not record.get("enabled"):
+                continue
+            items.append(dict(record))
+    items.sort(key=lambda item: item.get("created_at") or 0, reverse=True)
+    return items
+
+
 def resolve_device_metadata(payload, ip_address=""):
     keys = device_metadata_keys_for_payload(payload, ip_address)
     with metadata_lock:
@@ -825,6 +925,7 @@ def apply_device_metadata(device):
 device_metadata = load_device_metadata_records()
 device_occupancy = load_device_occupancy_records()
 remote_dashboards = load_remote_dashboards_records()
+notifications = load_notifications_records()
 
 
 def normalize_device_payload(payload, ip_address):
@@ -3265,6 +3366,91 @@ def api_remotes_delete(remote_id):
         persist_remote_dashboards_records_locked()
 
     return jsonify({"ok": True, "remote": record})
+
+
+@app.route("/api/notifications")
+def api_notifications_list():
+    """Return active notifications (or all if include_inactive=1)."""
+    include_inactive = clean_text(request.args.get("include_inactive")).lower() in ("1", "true", "yes", "on")
+    items = list_notifications(include_inactive=include_inactive)
+    return jsonify({"ok": True, "notifications": items})
+
+
+@app.route("/api/notifications", methods=["POST"])
+def api_notifications_upsert():
+    body = request.get_json(silent=True) or {}
+    notification_id = clean_text(body.get("id"))
+
+    title = normalize_notification_text(body.get("title"), limit=120)
+    text_body = normalize_notification_text(body.get("body"), limit=400)
+    if not title and not text_body:
+        return jsonify({"ok": False, "error": "empty_content"}), 400
+
+    level = normalize_notification_level(body.get("level"))
+    enabled = bool(body.get("enabled", True))
+    ttl_seconds = safe_int(body.get("ttl_seconds"))
+    expires_at_raw = safe_int(body.get("expires_at"))
+    now_ts = int(time.time())
+    if ttl_seconds and ttl_seconds > 0:
+        expires_at = now_ts + max(60, min(60 * 60 * 24 * 365, ttl_seconds))
+    elif expires_at_raw and expires_at_raw > now_ts:
+        expires_at = expires_at_raw
+    else:
+        expires_at = 0  # never
+
+    with notifications_lock:
+        prune_expired_notifications_locked(now_ts=now_ts)
+        if notification_id and notification_id in notifications:
+            existing = notifications[notification_id]
+            record = dict(existing)
+            record.update({
+                "title": title,
+                "body": text_body,
+                "level": level,
+                "enabled": enabled,
+                "expires_at": expires_at,
+                "expires_at_iso": datetime.fromtimestamp(expires_at).isoformat(timespec="seconds") if expires_at else "",
+                "updated_at": now_iso(),
+            })
+        else:
+            active_count = sum(1 for r in notifications.values() if r.get("enabled"))
+            if enabled and active_count >= NOTIFICATION_MAX_ACTIVE:
+                return jsonify({
+                    "ok": False,
+                    "error": "too_many_active",
+                    "message": f"最多允许 {NOTIFICATION_MAX_ACTIVE} 条活跃通知，请先禁用或删除旧的",
+                }), 400
+            notification_id = uuid.uuid4().hex
+            record = {
+                "id": notification_id,
+                "title": title,
+                "body": text_body,
+                "level": level,
+                "enabled": enabled,
+                "expires_at": expires_at,
+                "expires_at_iso": datetime.fromtimestamp(expires_at).isoformat(timespec="seconds") if expires_at else "",
+                "created_at": now_ts,
+                "created_at_iso": now_iso(),
+                "updated_at": now_iso(),
+            }
+        notifications[notification_id] = record
+        persist_notifications_records_locked()
+        payload = dict(record)
+
+    return jsonify({"ok": True, "notification": payload})
+
+
+@app.route("/api/notifications/<notification_id>", methods=["DELETE"])
+def api_notifications_delete(notification_id):
+    notification_id = clean_text(notification_id)
+    if not notification_id:
+        return jsonify({"ok": False, "error": "missing_id"}), 400
+    with notifications_lock:
+        record = notifications.pop(notification_id, None)
+        if record is None:
+            return jsonify({"ok": False, "error": "notification_not_found"}), 404
+        persist_notifications_records_locked()
+    return jsonify({"ok": True, "notification": record})
 
 
 @app.route("/api/devices")

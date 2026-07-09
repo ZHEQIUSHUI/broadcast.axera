@@ -2777,6 +2777,257 @@
             animation: pulse 1.4s ease-in-out infinite;
         }
 
+        /* ===================================================
+           Top-edge notification ticker (marquee)
+        ==================================================== */
+        .notification-ticker {
+            position: sticky;
+            top: 0;
+            z-index: 190;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 8px 0 0;
+            min-height: 34px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(90deg, var(--accent-soft), rgba(15, 118, 110, 0.04));
+            overflow: hidden;
+            font-size: 13px;
+        }
+        .notification-ticker[hidden] { display: none; }
+        .notification-ticker[data-level="warn"] {
+            background: linear-gradient(90deg, var(--warn-soft), rgba(184, 112, 22, 0.05));
+        }
+        .notification-ticker[data-level="danger"] {
+            background: linear-gradient(90deg, var(--danger-soft), rgba(181, 66, 49, 0.05));
+        }
+        .notification-ticker[data-level="success"] {
+            background: linear-gradient(90deg, var(--accent-soft), rgba(47, 143, 110, 0.05));
+        }
+
+        .notification-ticker-track {
+            display: inline-flex;
+            gap: 44px;
+            flex: 1 1 auto;
+            white-space: nowrap;
+            animation: notification-scroll 40s linear infinite;
+            padding-left: 100%;
+            will-change: transform;
+        }
+        .notification-ticker:hover .notification-ticker-track {
+            animation-play-state: paused;
+        }
+
+        @keyframes notification-scroll {
+            from { transform: translateX(0); }
+            to   { transform: translateX(-100%); }
+        }
+
+        .notification-ticker-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--ink);
+        }
+        .notification-ticker-item .lvl {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 2px 9px;
+            border-radius: var(--r-pill);
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--accent);
+            color: #fff;
+            line-height: 1.2;
+        }
+        .notification-ticker-item[data-level="warn"] .lvl { background: var(--warn); }
+        .notification-ticker-item[data-level="danger"] .lvl { background: var(--danger); }
+        .notification-ticker-item[data-level="success"] .lvl { background: var(--success); }
+        .notification-ticker-item[data-level="info"] .lvl { background: var(--accent); }
+        .notification-ticker-item strong {
+            font-weight: 600;
+            color: var(--ink);
+        }
+        .notification-ticker-item .body {
+            color: var(--muted);
+            font-weight: 400;
+        }
+        .notification-ticker-item .dismiss {
+            border: none;
+            background: rgba(20, 30, 40, 0.06);
+            color: var(--muted);
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            font-size: 12px;
+            line-height: 1;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+        .notification-ticker-item .dismiss:hover {
+            background: rgba(20, 30, 40, 0.14);
+            color: var(--ink);
+            transform: none;
+            box-shadow: none;
+        }
+
+        .notification-ticker-close {
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border-radius: 50%;
+            border: 1px solid var(--line);
+            background: rgba(255, 252, 245, 0.72);
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .notification-ticker-close:hover {
+            background: var(--bg-panel-strong);
+            color: var(--ink);
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* ===================================================
+           Notification management modal
+        ==================================================== */
+        .notification-modal.open { display: flex; }
+        .notification-shell-v2 { width: min(880px, 100%); }
+
+        .notification-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .notification-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 14px;
+            align-items: center;
+            padding: 12px 14px;
+            border-radius: var(--r-md);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+        }
+        .notification-row.is-inactive { opacity: 0.6; }
+
+        .notification-row-info { display: grid; gap: 5px; min-width: 0; }
+        .notification-row-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--ink);
+            overflow-wrap: anywhere;
+        }
+        .notification-row-body {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+        .notification-row-meta {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            font-size: 11px;
+            color: var(--muted);
+        }
+        .notification-row-actions {
+            display: inline-flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .notification-row-actions button {
+            min-height: 32px; height: 32px;
+            padding: 0 12px; font-size: 12px;
+            border-radius: 8px; line-height: 1;
+            display: inline-flex; align-items: center; justify-content: center;
+        }
+
+        .lvl-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: var(--r-pill);
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--accent);
+            color: #fff;
+            line-height: 1.2;
+        }
+        .lvl-chip[data-level="warn"] { background: var(--warn); }
+        .lvl-chip[data-level="danger"] { background: var(--danger); }
+        .lvl-chip[data-level="success"] { background: var(--success); }
+        .lvl-chip[data-level="info"] { background: var(--accent); }
+
+        .notification-empty {
+            padding: 28px 20px;
+            border: 1px dashed var(--line-strong);
+            background: rgba(255, 252, 245, 0.6);
+            border-radius: var(--r-md);
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+        }
+        .notification-empty strong {
+            display: block;
+            color: var(--ink);
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .notification-form {
+            display: grid;
+            gap: 10px;
+        }
+        .notification-form label {
+            display: grid;
+            gap: 5px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .notification-form input,
+        .notification-form select,
+        .notification-form textarea {
+            width: 100%;
+            padding: 9px 11px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--line);
+            background: var(--bg-input);
+            color: var(--ink);
+            font-size: 13px;
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+        .notification-form input:focus,
+        .notification-form select:focus,
+        .notification-form textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: var(--focus-ring);
+        }
+        .notification-form textarea {
+            min-height: 88px;
+            resize: vertical;
+        }
+
+        @media (max-width: 760px) {
+            .notification-row {
+                grid-template-columns: 1fr;
+            }
+            .notification-row-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+        }
+
         @media (max-width: 760px) {
             .update-job-indicator {
                 width: 100%;
@@ -3181,6 +3432,10 @@
     </style>
 </head>
 <body>
+    <div class="notification-ticker" id="notification-ticker" hidden>
+        <div class="notification-ticker-track" id="notification-ticker-track"></div>
+        <button class="notification-ticker-close" id="btn-notification-ticker-close" type="button" aria-label="关闭通知条">×</button>
+    </div>
     <div class="shell">
         <header class="hero">
             <div class="hero-card">
@@ -3227,6 +3482,7 @@
                     <button id="btn-density-comfortable" class="active" data-density="comfortable" type="button">舒适</button>
                     <button id="btn-density-compact" data-density="compact" type="button">紧凑</button>
                 </div>
+                <button class="btn-secondary" id="btn-open-notifications" type="button">通知</button>
                 <button class="btn-secondary" id="btn-open-remotes" type="button">远程面板</button>
             </div>
         </section>
@@ -3602,6 +3858,76 @@
         </div>
     </div>
 
+    <div class="update-modal" id="notification-modal" role="dialog" aria-modal="true" aria-labelledby="notification-heading">
+        <div class="update-shell update-shell-v2 notification-shell-v2">
+            <div class="update-top">
+                <div>
+                    <h3 id="notification-heading">通知管理</h3>
+                    <p>在顶栏滚动展示重要信息，可以设置有效期，本地浏览器可单条 × 隐藏但只对当前设备生效。</p>
+                </div>
+                <button class="btn-secondary" id="btn-notification-close" type="button">关闭</button>
+            </div>
+            <div class="update-body update-body-v2">
+                <section class="update-section">
+                    <header class="update-section-head">
+                        <h4>已有通知</h4>
+                        <span class="update-section-hint">未启用的通知不会滚动展示；过期的会被自动清理。</span>
+                    </header>
+                    <div class="notification-list" id="notification-list"></div>
+                </section>
+
+                <section class="update-section">
+                    <header class="update-section-head">
+                        <h4>添加 / 修改</h4>
+                        <span class="update-section-hint">标题会在顶栏显示为主要文字；正文会作为详情跟在后面。</span>
+                    </header>
+                    <div class="notification-form">
+                        <div class="update-grid-2">
+                            <label>
+                                级别
+                                <select id="notification-level">
+                                    <option value="info">信息（默认）</option>
+                                    <option value="success">成功 / 提示</option>
+                                    <option value="warn">警告</option>
+                                    <option value="danger">紧急</option>
+                                </select>
+                            </label>
+                            <label>
+                                有效期
+                                <select id="notification-ttl">
+                                    <option value="0">不过期</option>
+                                    <option value="3600">1 小时</option>
+                                    <option value="21600">6 小时</option>
+                                    <option value="86400" selected>24 小时</option>
+                                    <option value="259200">3 天</option>
+                                    <option value="604800">7 天</option>
+                                </select>
+                            </label>
+                        </div>
+                        <label>
+                            标题
+                            <input id="notification-title" maxlength="120" placeholder="比如：本周五 20:00 停机维护 30 分钟">
+                        </label>
+                        <label>
+                            正文（可选）
+                            <textarea id="notification-body" maxlength="400" placeholder="补充说明，仅在管理面板可看，滚动条不显示"></textarea>
+                        </label>
+                    </div>
+                </section>
+            </div>
+            <div class="update-actions-bar">
+                <label class="opt-check">
+                    <input id="notification-enabled" type="checkbox" checked>
+                    <span>启用（否则不会滚动展示）</span>
+                </label>
+                <div class="update-actions-buttons">
+                    <button class="btn-secondary" id="btn-notification-reset" type="button">清空</button>
+                    <button class="btn-primary" id="btn-notification-save" type="button">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="toast" id="toast"></div>
 
     <script>
@@ -3732,6 +4058,20 @@
             btnWebsshCopy: document.getElementById('btn-webssh-copy'),
             btnOpenRemotes: document.getElementById('btn-open-remotes'),
             remoteModal: document.getElementById('remote-modal'),
+            notificationTicker: document.getElementById('notification-ticker'),
+            notificationTickerTrack: document.getElementById('notification-ticker-track'),
+            btnNotificationTickerClose: document.getElementById('btn-notification-ticker-close'),
+            btnOpenNotifications: document.getElementById('btn-open-notifications'),
+            notificationModal: document.getElementById('notification-modal'),
+            notificationList: document.getElementById('notification-list'),
+            notificationLevel: document.getElementById('notification-level'),
+            notificationTtl: document.getElementById('notification-ttl'),
+            notificationTitle: document.getElementById('notification-title'),
+            notificationBody: document.getElementById('notification-body'),
+            notificationEnabled: document.getElementById('notification-enabled'),
+            btnNotificationClose: document.getElementById('btn-notification-close'),
+            btnNotificationSave: document.getElementById('btn-notification-save'),
+            btnNotificationReset: document.getElementById('btn-notification-reset'),
             btnRemoteClose: document.getElementById('btn-remote-close'),
             remoteList: document.getElementById('remote-list'),
             remoteOrigin: document.getElementById('remote-origin'),
@@ -6822,7 +7162,7 @@
             const tag = (target && target.tagName) || '';
             if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
             if (target && target.isContentEditable) return;
-            const anyModalOpen = ['detail-modal', 'occupancy-modal', 'update-modal', 'remote-modal', 'terminal-modal']
+            const anyModalOpen = ['detail-modal', 'occupancy-modal', 'update-modal', 'remote-modal', 'terminal-modal', 'notification-modal']
                 .some((id) => {
                     const el = document.getElementById(id);
                     return el && el.classList.contains('open');
@@ -7050,7 +7390,7 @@
             const tag = (event.target && event.target.tagName) || '';
             if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
             if (event.target && event.target.isContentEditable) return;
-            const anyModalOpen = ['detail-modal', 'occupancy-modal', 'update-modal', 'remote-modal', 'terminal-modal']
+            const anyModalOpen = ['detail-modal', 'occupancy-modal', 'update-modal', 'remote-modal', 'terminal-modal', 'notification-modal']
                 .some((id) => {
                     const el = document.getElementById(id);
                     return el && el.classList.contains('open');
@@ -7596,6 +7936,362 @@
         resumeLastUpdateJob();
 
         /* ====== /Background update-job tracking ====== */
+
+        /* ====== Top-edge notification ticker + management ====== */
+        const NOTIFICATION_DISMISSED_KEY = 'broadcast.axera.notification_dismissed.v1';
+        const NOTIFICATION_TICKER_HIDDEN_KEY = 'broadcast.axera.notification_ticker_hidden.v1';
+        const NOTIFICATION_POLL_INTERVAL = 30000;
+
+        state.notifications = [];
+        state.notificationEditingId = null;
+        let __notificationPollTimer = null;
+
+        function notificationDismissedIds() {
+            try {
+                const raw = localStorage.getItem(NOTIFICATION_DISMISSED_KEY) || '[]';
+                const arr = JSON.parse(raw);
+                return Array.isArray(arr) ? arr.filter(Boolean).map(String) : [];
+            } catch (_) { return []; }
+        }
+
+        function notificationSaveDismissedIds(ids) {
+            try { localStorage.setItem(NOTIFICATION_DISMISSED_KEY, JSON.stringify(ids)); } catch (_) {}
+        }
+
+        function notificationDismissLocally(id) {
+            const ids = new Set(notificationDismissedIds());
+            ids.add(String(id));
+            notificationSaveDismissedIds([...ids]);
+            renderNotificationTicker();
+        }
+
+        function tickerHiddenLocally() {
+            try { return localStorage.getItem(NOTIFICATION_TICKER_HIDDEN_KEY) === '1'; }
+            catch (_) { return false; }
+        }
+        function setTickerHiddenLocally(hidden) {
+            try {
+                if (hidden) localStorage.setItem(NOTIFICATION_TICKER_HIDDEN_KEY, '1');
+                else localStorage.removeItem(NOTIFICATION_TICKER_HIDDEN_KEY);
+            } catch (_) {}
+        }
+
+        function renderNotificationTicker() {
+            const ticker = elements.notificationTicker;
+            const track = elements.notificationTickerTrack;
+            if (!ticker || !track) return;
+            if (tickerHiddenLocally()) {
+                ticker.hidden = true;
+                return;
+            }
+            const dismissed = new Set(notificationDismissedIds());
+            const active = (state.notifications || []).filter((n) => n.enabled && !dismissed.has(String(n.id)));
+            if (!active.length) {
+                ticker.hidden = true;
+                track.innerHTML = '';
+                delete ticker.dataset.level;
+                return;
+            }
+            // Highest-severity level for the strip tint
+            const priority = { info: 0, success: 1, warn: 2, danger: 3 };
+            const topLevel = active.reduce((acc, n) => (priority[n.level] > priority[acc] ? n.level : acc), 'info');
+            ticker.dataset.level = topLevel;
+            ticker.hidden = false;
+            const nowSec = Date.now() / 1000;
+            const items = active.map((n) => {
+                const level = String(n.level || 'info');
+                const label = ({ info: '通知', success: '完成', warn: '注意', danger: '紧急' })[level] || '通知';
+                const title = escapeHtml(n.title || '');
+                const body = n.body ? `<span class="body">${escapeHtml(n.body)}</span>` : '';
+                let expires = '';
+                if (n.expires_at && Number(n.expires_at) > nowSec) {
+                    expires = `<span class="body">·  ${escapeHtml(formatRelativeAgo(Number(n.expires_at) - nowSec).replace('前', '后'))} 结束</span>`;
+                }
+                return `
+                    <span class="notification-ticker-item" data-level="${level}">
+                        <span class="lvl">${label}</span>
+                        <strong>${title}</strong>
+                        ${body}
+                        ${expires}
+                        <button type="button" class="dismiss" data-notification-dismiss="${escapeHtml(n.id)}" aria-label="仅在本机隐藏">×</button>
+                    </span>
+                `;
+            });
+            // Duplicate so the marquee looks continuous
+            track.innerHTML = [...items, ...items].join('');
+        }
+
+        async function refreshNotifications(silent) {
+            try {
+                const response = await fetch('/api/notifications');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const payload = await response.json();
+                state.notifications = Array.isArray(payload.notifications) ? payload.notifications : [];
+                renderNotificationTicker();
+                if (elements.notificationModal.classList.contains('open')) {
+                    // Reload full list (including inactive) when the admin modal is open
+                    await refreshNotificationsAdmin(true);
+                }
+            } catch (_) {
+                if (!silent) showToast('拉取通知失败');
+            }
+        }
+
+        async function refreshNotificationsAdmin(silent) {
+            try {
+                const response = await fetch('/api/notifications?include_inactive=1');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const payload = await response.json();
+                const items = Array.isArray(payload.notifications) ? payload.notifications : [];
+                renderNotificationAdminList(items);
+            } catch (_) {
+                if (!silent) showToast('拉取通知列表失败');
+            }
+        }
+
+        function renderNotificationAdminList(items) {
+            const container = elements.notificationList;
+            if (!container) return;
+            if (!items.length) {
+                container.innerHTML = `
+                    <div class="notification-empty">
+                        <strong>暂无通知</strong>
+                        在下方新建一条，就会出现在顶栏滚动。
+                    </div>
+                `;
+                return;
+            }
+            const nowSec = Date.now() / 1000;
+            container.innerHTML = items.map((n) => {
+                const level = escapeHtml(String(n.level || 'info'));
+                const label = ({ info: '信息', success: '成功', warn: '警告', danger: '紧急' })[String(n.level || 'info')] || '信息';
+                const title = escapeHtml(n.title || '(空标题)');
+                const body = n.body ? `<div class="notification-row-body">${escapeHtml(n.body)}</div>` : '';
+                const enabled = !!n.enabled;
+                let expiryMeta;
+                if (n.expires_at && Number(n.expires_at) > 0) {
+                    const remaining = Number(n.expires_at) - nowSec;
+                    expiryMeta = remaining > 0
+                        ? `<span>剩余 ${escapeHtml(formatRelativeAgo(remaining).replace('前', ''))}</span>`
+                        : `<span style="color:var(--warn)">已过期</span>`;
+                } else {
+                    expiryMeta = `<span>永久</span>`;
+                }
+                const createdMeta = n.created_at
+                    ? `<span>${escapeHtml(formatRelativeAgo(nowSec - Number(n.created_at)))}创建</span>`
+                    : '';
+                return `
+                    <div class="notification-row${enabled ? '' : ' is-inactive'}" data-notification-id="${escapeHtml(n.id)}">
+                        <div class="notification-row-info">
+                            <div class="notification-row-title">
+                                <span class="lvl-chip" data-level="${level}">${label}</span>
+                                ${title}
+                            </div>
+                            ${body}
+                            <div class="notification-row-meta">
+                                ${expiryMeta}
+                                ${createdMeta}
+                            </div>
+                        </div>
+                        <div class="notification-row-actions">
+                            <label class="opt-check" title="启用 / 禁用">
+                                <input type="checkbox" ${enabled ? 'checked' : ''} data-notification-toggle aria-label="启用">
+                                <span>${enabled ? '已启用' : '禁用'}</span>
+                            </label>
+                            <button class="btn-secondary" data-notification-action="edit" type="button">编辑</button>
+                            <button class="btn-danger" data-notification-action="delete" type="button">删除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function resetNotificationForm() {
+            state.notificationEditingId = null;
+            if (elements.notificationLevel) elements.notificationLevel.value = 'info';
+            if (elements.notificationTtl) elements.notificationTtl.value = '86400';
+            if (elements.notificationTitle) elements.notificationTitle.value = '';
+            if (elements.notificationBody) elements.notificationBody.value = '';
+            if (elements.notificationEnabled) elements.notificationEnabled.checked = true;
+        }
+
+        function openNotificationModal() {
+            elements.notificationModal.classList.add('open');
+            refreshNotificationsAdmin(true);
+        }
+
+        function closeNotificationModal() {
+            elements.notificationModal.classList.remove('open');
+            resetNotificationForm();
+        }
+
+        async function saveNotificationFromForm() {
+            const title = String(elements.notificationTitle.value || '').trim();
+            const body = String(elements.notificationBody.value || '').trim();
+            if (!title && !body) {
+                showToast('标题或正文至少要填一项');
+                return;
+            }
+            const payload = {
+                level: elements.notificationLevel.value,
+                title,
+                body,
+                enabled: !!elements.notificationEnabled.checked,
+                ttl_seconds: Number(elements.notificationTtl.value || 0),
+            };
+            if (state.notificationEditingId) payload.id = state.notificationEditingId;
+            try {
+                const response = await fetch('/api/notifications', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.ok) throw new Error(data.message || data.error || '保存失败');
+                showToast('通知已保存');
+                resetNotificationForm();
+                await refreshNotifications(true);
+                await refreshNotificationsAdmin(true);
+            } catch (err) {
+                showToast(err.message || '保存失败');
+            }
+        }
+
+        async function deleteNotification(id) {
+            if (!id) return;
+            if (!window.confirm('删除这条通知？')) return;
+            try {
+                const response = await fetch(`/api/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.ok) throw new Error(data.message || data.error || '删除失败');
+                showToast('通知已删除');
+                await refreshNotifications(true);
+                await refreshNotificationsAdmin(true);
+            } catch (err) {
+                showToast(err.message || '删除失败');
+            }
+        }
+
+        async function toggleNotificationEnabled(id, enabled) {
+            const record = (state.notifications || []).find((n) => String(n.id) === String(id));
+            const source = record || { id };
+            const payload = {
+                id,
+                title: source.title || '',
+                body: source.body || '',
+                level: source.level || 'info',
+                enabled: !!enabled,
+            };
+            // Preserve original expiry if present so toggling doesn't extend it
+            if (source.expires_at) payload.expires_at = source.expires_at;
+            try {
+                const response = await fetch('/api/notifications', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.ok) throw new Error(data.message || data.error || '更新失败');
+                await refreshNotifications(true);
+                await refreshNotificationsAdmin(true);
+            } catch (err) {
+                showToast(err.message || '更新失败');
+            }
+        }
+
+        function editNotificationInForm(id) {
+            const record = (state.notifications || []).find((n) => String(n.id) === String(id));
+            // May not be in state.notifications if inactive; refetch admin list
+            if (!record) {
+                (async () => {
+                    try {
+                        const response = await fetch('/api/notifications?include_inactive=1');
+                        const payload = await response.json();
+                        const items = Array.isArray(payload.notifications) ? payload.notifications : [];
+                        const rec = items.find((n) => String(n.id) === String(id));
+                        if (rec) applyNotificationRecordToForm(rec);
+                    } catch (_) {}
+                })();
+                return;
+            }
+            applyNotificationRecordToForm(record);
+        }
+
+        function applyNotificationRecordToForm(record) {
+            state.notificationEditingId = record.id;
+            elements.notificationLevel.value = record.level || 'info';
+            elements.notificationTitle.value = record.title || '';
+            elements.notificationBody.value = record.body || '';
+            elements.notificationEnabled.checked = !!record.enabled;
+            // TTL select is a duration, not an absolute time. When editing, default to 0 (keep as is)
+            // and rely on the fact that we omit ttl_seconds unless changed -> backend keeps existing.
+            elements.notificationTtl.value = '0';
+            showToast('已载入到表单，可修改后保存');
+        }
+
+        // Wire up interactions
+        if (elements.btnOpenNotifications) {
+            elements.btnOpenNotifications.addEventListener('click', openNotificationModal);
+        }
+        if (elements.btnNotificationClose) {
+            elements.btnNotificationClose.addEventListener('click', closeNotificationModal);
+        }
+        if (elements.btnNotificationSave) {
+            elements.btnNotificationSave.addEventListener('click', saveNotificationFromForm);
+        }
+        if (elements.btnNotificationReset) {
+            elements.btnNotificationReset.addEventListener('click', resetNotificationForm);
+        }
+        if (elements.btnNotificationTickerClose) {
+            elements.btnNotificationTickerClose.addEventListener('click', () => {
+                setTickerHiddenLocally(true);
+                elements.notificationTicker.hidden = true;
+            });
+        }
+        if (elements.notificationTickerTrack) {
+            elements.notificationTickerTrack.addEventListener('click', (event) => {
+                const btn = event.target.closest('[data-notification-dismiss]');
+                if (!btn) return;
+                event.preventDefault();
+                notificationDismissLocally(btn.dataset.notificationDismiss);
+            });
+        }
+        if (elements.notificationList) {
+            elements.notificationList.addEventListener('click', (event) => {
+                const btn = event.target.closest('[data-notification-action]');
+                if (!btn) return;
+                const row = btn.closest('.notification-row');
+                if (!row) return;
+                const id = row.dataset.notificationId;
+                if (!id) return;
+                if (btn.dataset.notificationAction === 'edit') editNotificationInForm(id);
+                else if (btn.dataset.notificationAction === 'delete') deleteNotification(id);
+            });
+            elements.notificationList.addEventListener('change', (event) => {
+                const cb = event.target.closest('input[data-notification-toggle]');
+                if (!cb) return;
+                const row = cb.closest('.notification-row');
+                if (!row) return;
+                const id = row.dataset.notificationId;
+                if (!id) return;
+                toggleNotificationEnabled(id, cb.checked);
+            });
+        }
+
+        // Also route ESC / overlay-click / same background overlay to close
+        if (typeof bindOverlayClose === 'function' && elements.notificationModal) {
+            bindOverlayClose(elements.notificationModal, closeNotificationModal);
+        }
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && elements.notificationModal.classList.contains('open')) {
+                closeNotificationModal();
+            }
+        });
+
+        // Boot
+        refreshNotifications(true);
+        __notificationPollTimer = setInterval(() => refreshNotifications(true), NOTIFICATION_POLL_INTERVAL);
+        /* ====== /Top-edge notification ticker + management ====== */
 
         /* ====== /Layout v2 overhaul ====== */
 
