@@ -929,6 +929,143 @@ remote_dashboards = load_remote_dashboards_records()
 notifications = load_notifications_records()
 
 
+STORAGE_DISPLAY_LIMIT = 3
+STORAGE_LOW_SPACE_MIN_TOTAL_KB = 64 * 1024
+STORAGE_LOW_SPACE_PERCENT = 10.0
+NETWORK_STORAGE_FILESYSTEMS = {
+    "9p",
+    "afs",
+    "ceph",
+    "cifs",
+    "glusterfs",
+    "lustre",
+    "nfs",
+    "nfs4",
+    "nfsd",
+    "smbfs",
+    "smb3",
+}
+
+
+def is_network_storage_filesystem(filesystem):
+    filesystem = clean_text(filesystem).lower()
+    return filesystem in NETWORK_STORAGE_FILESYSTEMS or filesystem.startswith(
+        ("fuse.ssh", "fuse.rclone", "fuse.gluster")
+    )
+
+
+def normalize_storage_partitions(raw_partitions):
+    """Keep safe, display-ready local storage metrics.
+
+    Mount paths are deliberately retained because they are the useful label
+    for this view. Network filesystems (especially NFS) are discarded before
+    they can reach either the API response or the browser.
+    """
+    if isinstance(raw_partitions, dict):
+        raw_partitions = list(raw_partitions.values())
+    if not isinstance(raw_partitions, list):
+        return []
+
+    normalized = []
+    seen_names = set()
+    for index, item in enumerate(raw_partitions):
+        if not isinstance(item, dict):
+            continue
+        filesystem = clean_text(item.get("filesystem") or item.get("fstype"))[:32].lower()
+        if is_network_storage_filesystem(filesystem):
+            continue
+
+        mount_path = clean_text(item.get("mount_path") or item.get("mount") or item.get("path"))
+        # Legacy agents only sent the basename. Keep the old root entry
+        # useful, but do not put mmcblk/sda device names back into the UI.
+        if not mount_path and clean_text(item.get("name")).lower() == "root":
+            mount_path = "/"
+        mount_path = re.sub(r"/{2,}", "/", mount_path.rstrip("/")) if mount_path != "/" else "/"
+        if not mount_path.startswith("/") or mount_path in ("", ".", ".."):
+            continue
+        if mount_path in seen_names:
+            continue
+
+        total_raw = item.get("total_kb")
+        if total_raw is None:
+            total_raw = item.get("total")
+        total_kb = safe_int(total_raw)
+        available_raw = item.get("available_kb")
+        if available_raw is None:
+            available_raw = item.get("avail_kb")
+        if available_raw is None:
+            available_raw = item.get("free_kb")
+        available_kb = safe_int(available_raw)
+        if total_kb is None or total_kb <= 0 or available_kb is None or available_kb < 0:
+            continue
+
+        total_kb = max(1, total_kb)
+        available_kb = min(available_kb, total_kb)
+        used_raw = item.get("used_kb")
+        if used_raw is None:
+            used_raw = item.get("used")
+        used_kb = safe_int(used_raw)
+        if used_kb is None:
+            used_kb = total_kb - available_kb
+        used_kb = max(0, min(used_kb, total_kb))
+        used_percent = safe_float(item.get("used_percent"))
+        if used_percent is None:
+            used_percent = used_kb * 100.0 / total_kb
+
+        normalized.append(
+            {
+                "mount_path": mount_path[:200],
+                "filesystem": filesystem,
+                "total_kb": total_kb,
+                "available_kb": available_kb,
+                "used_kb": used_kb,
+                "used_percent": max(0.0, min(100.0, used_percent)),
+            }
+        )
+        seen_names.add(mount_path)
+    return normalized
+
+
+def storage_partition_is_low_space(partition):
+    total_kb = safe_int(partition.get("total_kb")) or 0
+    available_kb = safe_int(partition.get("available_kb"))
+    if total_kb < STORAGE_LOW_SPACE_MIN_TOTAL_KB or available_kb is None:
+        return False
+    available_percent = available_kb * 100.0 / total_kb
+    return available_percent <= STORAGE_LOW_SPACE_PERCENT
+
+
+def select_storage_partitions(raw_partitions):
+    """Return at most three useful partitions, plus a low-space warning count."""
+    partitions = normalize_storage_partitions(raw_partitions)
+    if not partitions:
+        return [], 0
+
+    root = next((partition for partition in partitions if partition.get("mount_path") == "/"), None)
+    ranked = sorted(
+        (partition for partition in partitions if partition is not root),
+        key=lambda partition: (-(safe_int(partition.get("total_kb")) or 0), partition.get("mount_path") or ""),
+    )
+    selected = []
+    if root:
+        selected.append(root)
+    selected.extend(ranked[: max(0, STORAGE_DISPLAY_LIMIT - len(selected))])
+    selected.sort(
+        key=lambda partition: (
+            0 if partition.get("mount_path") == "/" else 1,
+            -((safe_int(partition.get("total_kb")) or 0)),
+            partition.get("mount_path") or "",
+        )
+    )
+    selected_paths = {partition.get("mount_path") for partition in selected}
+    hidden_low_space_count = sum(
+        1
+        for partition in partitions
+        if partition.get("mount_path") not in selected_paths and storage_partition_is_low_space(partition)
+    )
+    return selected, hidden_low_space_count
+
+
 def normalize_device_payload(payload, ip_address):
     hostname = clean_text(payload.get("hostname")) or clean_text(payload.get("board_id")) or ip_address
     default_user = clean_text(payload.get("user"), "root") or "root"
@@ -985,6 +1122,12 @@ def normalize_device_payload(payload, ip_address):
         cmm_used_kb = None
         cmm_used_percent = None
 
+    storage_partitions, storage_hidden_low_space_count = select_storage_partitions(
+        payload.get("storage_partitions")
+        if payload.get("storage_partitions") is not None
+        else payload.get("storage")
+    )
+
     return {
         "device_key": f"local:{ip_address}",
         "source_kind": "local",
@@ -1040,6 +1183,8 @@ def normalize_device_payload(payload, ip_address):
         "cmm_free_kb": cmm_free_kb,
         "cmm_used_kb": cmm_used_kb,
         "cmm_used_percent": cmm_used_percent,
+        "storage_partitions": storage_partitions,
+        "storage_hidden_low_space_count": storage_hidden_low_space_count,
         "is_ax": is_ax,
         "is_raspberry_pi": is_raspberry_pi,
         "schema_version": clean_text(payload.get("schema_version"), "1"),
@@ -1305,6 +1450,15 @@ def fetch_remote_devices(remote, requested_tags=None):
         )
         devices = payload.get("devices")
         if isinstance(devices, list):
+            for device in devices:
+                if isinstance(device, dict):
+                    storage_partitions, hidden_low_space_count = select_storage_partitions(
+                        device.get("storage_partitions")
+                        if device.get("storage_partitions") is not None
+                        else device.get("storage")
+                    )
+                    device["storage_partitions"] = storage_partitions
+                    device["storage_hidden_low_space_count"] = hidden_low_space_count
             update_remote_status(remote_id, reachable=True, device_count=len(devices))
             return devices
         last_error = "无效响应"
@@ -1327,6 +1481,13 @@ def fetch_remote_devices(remote, requested_tags=None):
             for device in devices:
                 if isinstance(device, dict):
                     device.pop("history", None)
+                    storage_partitions, hidden_low_space_count = select_storage_partitions(
+                        device.get("storage_partitions")
+                        if device.get("storage_partitions") is not None
+                        else device.get("storage")
+                    )
+                    device["storage_partitions"] = storage_partitions
+                    device["storage_hidden_low_space_count"] = hidden_low_space_count
             update_remote_status(remote_id, reachable=True, device_count=len(devices))
             return devices
         last_error = last_error or "无效响应"

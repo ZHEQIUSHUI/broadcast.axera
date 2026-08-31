@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -14,8 +15,10 @@
 #include <pwd.h>
 #include <sstream>
 #include <string>
+#include <set>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <unistd.h>
@@ -74,6 +77,15 @@ struct GpuMetrics {
     std::string note = "";
 };
 
+struct StoragePartition {
+    std::string mount_path = "";
+    std::string filesystem = "";
+    long long total_kb = -1;
+    long long available_kb = -1;
+    long long used_kb = -1;
+    double used_percent = -1.0;
+};
+
 struct DeviceInfo {
     std::string schema_version = "2";
     std::string hostname = "";
@@ -104,6 +116,7 @@ struct DeviceInfo {
     MemoryMetrics memory;
     GpuMetrics gpu;
     CmmMetrics cmm;
+    std::vector<StoragePartition> storage_partitions;
     long long timestamp_ms = 0;
 };
 
@@ -762,6 +775,121 @@ long read_uptime_seconds() {
     return static_cast<long>(uptime);
 }
 
+std::string decode_mount_field(const std::string &value) {
+    std::string decoded;
+    decoded.reserve(value.size());
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (value[i] != '\\' || i + 3 >= value.size() ||
+            !std::isdigit(static_cast<unsigned char>(value[i + 1])) ||
+            !std::isdigit(static_cast<unsigned char>(value[i + 2])) ||
+            !std::isdigit(static_cast<unsigned char>(value[i + 3]))) {
+            decoded.push_back(value[i]);
+            continue;
+        }
+        int code = (value[i + 1] - '0') * 64 + (value[i + 2] - '0') * 8 + (value[i + 3] - '0');
+        decoded.push_back(static_cast<char>(code));
+        i += 3;
+    }
+    return decoded;
+}
+
+bool is_virtual_storage_filesystem(const std::string &filesystem) {
+    static const std::set<std::string> virtual_filesystems = {
+        "autofs",       "binfmt_misc", "cgroup",     "cgroup2",    "configfs",
+        "debugfs",      "devpts",      "devtmpfs",   "fusectl",    "hugetlbfs",
+        "efivarfs",     "mqueue",      "proc",        "pstore",     "ramfs",
+        "securityfs",   "sysfs",       "tracefs",     "tmpfs",      "rpc_pipefs",
+        "nsfs",         "overlay",     "nfs",         "nfs4",        "nfsd",
+        "cifs",         "smbfs",       "9p",          "ceph",       "glusterfs",
+    };
+    if (virtual_filesystems.count(filesystem) > 0) {
+        return true;
+    }
+    return filesystem.compare(0, 5, "fuse.") == 0;
+}
+
+bool is_local_storage_source(const std::string &source) {
+    return !source.empty() && source != "none" && source != "-";
+}
+
+long long storage_blocks_to_kb(unsigned long long blocks, unsigned long long block_size) {
+    if (block_size == 0) {
+        return -1;
+    }
+    const unsigned long long bytes = blocks * block_size;
+    return static_cast<long long>(bytes / 1024ULL);
+}
+
+std::vector<StoragePartition> get_storage_partitions() {
+    std::vector<StoragePartition> partitions;
+    std::set<std::string> seen_sources;
+    std::ifstream mounts("/proc/self/mounts");
+    if (!mounts) {
+        return partitions;
+    }
+
+    std::string line;
+    while (std::getline(mounts, line)) {
+        std::istringstream stream(line);
+        std::string source_encoded;
+        std::string target_encoded;
+        std::string filesystem_encoded;
+        std::string options;
+        if (!(stream >> source_encoded >> target_encoded >> filesystem_encoded >> options)) {
+            continue;
+        }
+
+        const std::string source = decode_mount_field(source_encoded);
+        const std::string target = decode_mount_field(target_encoded);
+        const std::string filesystem = to_lower(decode_mount_field(filesystem_encoded));
+        if (source.empty() || target.empty() || filesystem.empty() || is_virtual_storage_filesystem(filesystem) ||
+            !is_local_storage_source(source) || ("," + options + ",").find(",ro,") != std::string::npos) {
+            continue;
+        }
+        const std::string source_key = source + "\n" + filesystem;
+        if (!seen_sources.insert(source_key).second) {
+            continue;
+        }
+
+        struct statvfs stats;
+        if (statvfs(target.c_str(), &stats) != 0) {
+            continue;
+        }
+        const unsigned long long block_size = stats.f_frsize ? stats.f_frsize : stats.f_bsize;
+        const long long total_kb = storage_blocks_to_kb(stats.f_blocks, block_size);
+        const long long available_kb = storage_blocks_to_kb(stats.f_bavail, block_size);
+        const long long free_kb = storage_blocks_to_kb(stats.f_bfree, block_size);
+        if (total_kb <= 0 || available_kb < 0 || free_kb < 0) {
+            continue;
+        }
+
+        StoragePartition partition;
+        partition.mount_path = target;
+        partition.filesystem = filesystem;
+        partition.total_kb = total_kb;
+        partition.available_kb = std::min(available_kb, total_kb);
+        partition.used_kb = std::max(0LL, total_kb - std::min(free_kb, total_kb));
+        partition.used_percent = total_kb > 0
+                                     ? static_cast<double>(partition.used_kb) * 100.0 / total_kb
+                                     : -1.0;
+        partitions.push_back(partition);
+        if (partitions.size() >= 32) {
+            break;
+        }
+    }
+
+    std::sort(partitions.begin(), partitions.end(), [](const StoragePartition &left, const StoragePartition &right) {
+        if (left.mount_path == "/") {
+            return right.mount_path != "/";
+        }
+        if (right.mount_path == "/") {
+            return false;
+        }
+        return left.mount_path < right.mount_path;
+    });
+    return partitions;
+}
+
 DeviceInfo collect_static_device_info() {
     DeviceInfo info;
     info.user = get_username();
@@ -852,6 +980,15 @@ std::string format_long(long value) {
     return stream.str();
 }
 
+std::string format_long_long(long long value) {
+    if (value < 0) {
+        return "null";
+    }
+    std::ostringstream stream;
+    stream << value;
+    return stream.str();
+}
+
 std::string format_bool(bool value) {
     return value ? "true" : "false";
 }
@@ -906,6 +1043,20 @@ std::string device_info_to_json(const DeviceInfo &info) {
     json << "\"cmm_free_kb\":" << format_long(info.cmm.free_kb) << ",";
     json << "\"cmm_used_kb\":" << format_long(info.cmm.used_kb) << ",";
     json << "\"cmm_used_percent\":" << format_double(info.cmm.used_percent) << ",";
+    json << "\"storage_partitions\":[";
+    for (size_t i = 0; i < info.storage_partitions.size(); ++i) {
+        if (i > 0) {
+            json << ",";
+        }
+        const StoragePartition &partition = info.storage_partitions[i];
+        json << "{\"mount_path\":\"" << json_escape(partition.mount_path) << "\",";
+        json << "\"filesystem\":\"" << json_escape(partition.filesystem) << "\",";
+        json << "\"total_kb\":" << format_long_long(partition.total_kb) << ",";
+        json << "\"available_kb\":" << format_long_long(partition.available_kb) << ",";
+        json << "\"used_kb\":" << format_long_long(partition.used_kb) << ",";
+        json << "\"used_percent\":" << format_double(partition.used_percent) << "}";
+    }
+    json << "],";
     json << "\"timestamp_ms\":" << info.timestamp_ms;
     json << "}";
     return json.str();
@@ -949,6 +1100,7 @@ int main() {
         info.cpu_usage_percent = get_cpu_usage(&cpu_sample);
         info.memory = get_memory_metrics();
         info.gpu = get_gpu_metrics();
+        info.storage_partitions = get_storage_partitions();
         if (info.is_ax) {
             info.cmm = get_cmm_metrics();
         }
