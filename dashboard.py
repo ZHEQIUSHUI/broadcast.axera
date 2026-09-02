@@ -1241,7 +1241,9 @@ def onvif_get_camera_details(device_service, username="", password=""):
         profile_name = ""
         if profiles_root is not None:
             for element in profiles_root.iter():
-                if xml_local_name(element.tag).lower() != "profile":
+                # ONVIF's GetProfiles response uses the plural ``Profiles``
+                # element for each profile (some devices use singular).
+                if xml_local_name(element.tag).lower() not in ("profile", "profiles"):
                     continue
                 profile_token = next((value for key, value in element.attrib.items() if xml_local_name(key).lower() == "token"), "")
                 profile_name = xml_first_text(element, "Name")
