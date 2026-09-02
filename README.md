@@ -8,6 +8,7 @@
 - 支持读取可用本地存储分区的剩余空间（最多显示 3 个，显示 mount 路径、总量和可用量，过滤 NFS 等网络存储）
 - AX 设备额外支持 `UID / version / board_id / chip_type / CMM`（其中 `chip_type` 来自 `/proc/ax_proc/chip_type`）
 - 仪表盘支持动态设备卡片、型号筛选、设备详情页、网页 SSH 终端
+- 独立摄像头页面支持 ONVIF 局域网探测、手动添加 RTSP、网页预览和本地录像
 - 支持多办公室聚合：可添加其他 Dashboard 作为远程源，设备卡片预览位置，并支持位置筛选
 - SSH 终端支持浏览器本地保存密码，下次可直接进入
 - 支持网页批量安装 / 更新 / 卸载：可选 `SSH / Telnet / 自动 SSH->Telnet 回退`
@@ -46,6 +47,15 @@
 - AX 设备会额外展示 `UID / version / chip_type / board_id / CMM` 等信息。
 - 支持直接编辑设备标题和备注，适合记录机位、负责人、用途、网络说明等内容。
 - 标题和备注保存在当前 Dashboard 主机本地，服务重启后仍会保留。
+
+### 局域网摄像头
+
+- 访问 `/cameras` 进入独立的摄像头页面，不与设备管理列表混在一起。
+- “ONVIF 自动探测”使用 WS-Discovery 组播查找同一局域网内的 IP Camera；填写 ONVIF 账号后会继续尝试读取设备信息和 RTSP 主码流。
+- 即使设备暂时没有账号密码，也会先显示在探测结果中；添加后可在网页“编辑”里补填账号密码，系统会再次获取码流，仍获取不到时也可以直接补填 RTSP 地址。
+- 也可以手动保存 `rtsp://` / `rtsps://` 地址。网页预览由 Dashboard 主机上的 FFmpeg 转成 MJPEG，浏览器不需要直接支持 RTSP。
+- 录像由 Dashboard 主机上的 FFmpeg 分段保存到 `.runtime/camera_recordings/`，可在摄像头卡片中查看和下载录像文件。
+- 摄像头配置和账号密码保存在 Dashboard 本机 `.runtime/cameras.json`，API 和界面不会回显密码。
 
 ### SSH：网页版 SSH（webssh2）
 

@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>局域网摄像头 · Broadcast Dashboard</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --paper: #f3f0e8;
+            --surface: rgba(255, 255, 255, .86);
+            --surface-strong: #fff;
+            --ink: #18231f;
+            --muted: #66736d;
+            --line: rgba(24, 35, 31, .14);
+            --teal: #087f72;
+            --teal-dark: #075f58;
+            --danger: #bf493c;
+            --amber: #b87913;
+            --shadow: 0 18px 44px rgba(26, 43, 37, .10);
+            --radius: 18px;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at 12% 4%, rgba(8, 127, 114, .12), transparent 30%),
+                radial-gradient(circle at 90% 12%, rgba(184, 121, 19, .10), transparent 25%),
+                var(--paper);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        button, input { font: inherit; }
+        button { cursor: pointer; }
+        a { color: inherit; }
+
+        .shell {
+            width: min(1500px, calc(100% - 40px));
+            margin: 0 auto;
+            padding: 22px 0 52px;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .brand { font-weight: 800; letter-spacing: -.02em; }
+        .nav { display: inline-flex; padding: 4px; gap: 4px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.65); }
+        .nav a { padding: 8px 13px; border-radius: 9px; text-decoration: none; color: var(--muted); font-size: 13px; font-weight: 700; }
+        .nav a.active { color: white; background: var(--teal); }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 24px;
+            padding: 26px 28px;
+            border: 1px solid var(--line);
+            border-radius: 22px;
+            background: linear-gradient(120deg, rgba(255,255,255,.96), rgba(245,250,247,.82));
+            box-shadow: var(--shadow);
+        }
+
+        .eyebrow { color: var(--teal); font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+        h1 { margin: 6px 0 8px; font-size: clamp(26px, 4vw, 40px); letter-spacing: -.04em; }
+        .hero p { max-width: 760px; margin: 0; color: var(--muted); line-height: 1.65; }
+        .hero-stats { display: flex; align-items: center; gap: 10px; }
+        .stat { min-width: 102px; padding: 14px 16px; border-radius: 15px; background: rgba(8,127,114,.08); text-align: center; }
+        .stat strong { display: block; font-size: 26px; color: var(--teal-dark); }
+        .stat span { font-size: 11px; color: var(--muted); }
+
+        .workspace { display: grid; grid-template-columns: minmax(280px, 370px) minmax(0, 1fr); gap: 18px; margin-top: 18px; align-items: start; }
+        .sidebar { display: grid; gap: 16px; position: sticky; top: 16px; }
+        .panel { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: 0 10px 28px rgba(26,43,37,.06); }
+        .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+        .panel h2 { margin: 0; font-size: 17px; }
+        .panel-copy { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+
+        .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
+        label.full { grid-column: 1 / -1; }
+        input {
+            width: 100%; min-width: 0; padding: 10px 11px;
+            color: var(--ink); background: rgba(255,255,255,.9);
+            border: 1px solid var(--line); border-radius: 10px; outline: none;
+        }
+        input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(8,127,114,.10); }
+        .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .btn {
+            border: 0; border-radius: 10px; padding: 9px 13px; font-size: 12px; font-weight: 800;
+            transition: transform .15s ease, opacity .15s ease;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:disabled { opacity: .55; cursor: wait; transform: none; }
+        .btn-primary { color: white; background: var(--teal); }
+        .btn-secondary { color: var(--ink); background: #e9eeeb; border: 1px solid var(--line); }
+        .btn-danger { color: white; background: var(--danger); }
+        .btn-record { color: white; background: var(--danger); }
+        .btn-stop { color: white; background: #4b5551; }
+        .hint { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+        .form-status { min-height: 18px; margin-top: 9px; color: var(--muted); font-size: 12px; }
+        .form-status.error { color: var(--danger); }
+        .form-status.success { color: var(--teal); }
+
+        .content-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 2px 0 12px; }
+        .content-head h2 { margin: 0; font-size: 20px; }
+        .content-head span { color: var(--muted); font-size: 12px; }
+        .camera-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+        .camera-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-strong); box-shadow: 0 12px 32px rgba(26,43,37,.07); }
+        .camera-preview {
+            position: relative; display: grid; place-items: center; aspect-ratio: 16/9;
+            overflow: hidden; background: linear-gradient(135deg, #17231f, #263c34); color: rgba(255,255,255,.65);
+        }
+        .camera-preview img { display: none; width: 100%; height: 100%; object-fit: contain; background: #101715; }
+        .camera-preview.active img { display: block; }
+        .preview-placeholder { text-align: center; font-size: 12px; }
+        .camera-preview.active .preview-placeholder { display: none; }
+        .camera-preview::after { content: "LIVE"; position: absolute; top: 12px; left: 12px; padding: 4px 7px; border-radius: 7px; color: white; background: rgba(191,73,60,.9); font-size: 9px; font-weight: 900; letter-spacing: .12em; opacity: 0; }
+        .camera-preview.active::after { opacity: 1; }
+        .camera-body { padding: 16px; }
+        .camera-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+        .camera-title { min-width: 0; }
+        .camera-title h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
+        .camera-url { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+        .chip { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; background: #edf1ef; color: var(--muted); font-size: 10px; font-weight: 800; }
+        .chip.recording { color: white; background: var(--danger); animation: pulse 1.6s infinite; }
+        @keyframes pulse { 50% { opacity: .68; } }
+        .camera-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+        .camera-actions .btn { padding: 8px 10px; }
+        .recordings { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+        .recordings.open { display: block; }
+        .recording-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; font-size: 11px; }
+        .recording-row + .recording-row { border-top: 1px dashed var(--line); }
+        .recording-row a { color: var(--teal); font-weight: 800; text-decoration: none; }
+
+        .discover-results { display: none; margin-top: 16px; }
+        .discover-results.open { display: block; }
+        .discover-list { display: grid; gap: 8px; margin-top: 9px; }
+        .discover-item { padding: 11px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.7); }
+        .discover-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .discover-item strong { font-size: 12px; }
+        .discover-meta { margin-top: 4px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+        .discover-item .btn { margin-top: 8px; }
+        .empty { grid-column: 1/-1; padding: 48px 24px; border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; color: var(--muted); background: rgba(255,255,255,.45); }
+        .empty h3 { margin: 0 0 6px; color: var(--ink); }
+        .toast { position: fixed; left: 50%; bottom: 24px; z-index: 20; transform: translate(-50%, 20px); padding: 10px 16px; border-radius: 10px; color: white; background: rgba(24,35,31,.92); opacity: 0; pointer-events: none; transition: .2s ease; font-size: 12px; }
+        .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+        @media (max-width: 1050px) {
+            .workspace { grid-template-columns: 1fr; }
+            .sidebar { position: static; grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 760px) {
+            .shell { width: min(100% - 20px, 1500px); padding-top: 12px; }
+            .topbar, .hero { grid-template-columns: 1fr; }
+            .topbar { align-items: flex-start; }
+            .hero { padding: 20px; }
+            .hero-stats { justify-content: flex-start; }
+            .sidebar, .camera-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 430px) {
+            .field-grid { grid-template-columns: 1fr; }
+            label.full { grid-column: auto; }
+            .nav a { padding: 7px 9px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <div class="topbar">
+            <div class="brand">Broadcast Dashboard</div>
+            <nav class="nav" aria-label="页面导航">
+                <a href="/">设备管理</a>
+                <a href="/cameras" class="active">摄像头</a>
+            </nav>
+        </div>
+
+        <header class="hero">
+            <div>
+                <div class="eyebrow">ONVIF / RTSP Camera Center</div>
+                <h1>局域网摄像头</h1>
+                <p>通过 ONVIF 自动探测同一局域网内的 IP Camera，也可以手动添加 RTSP 地址。浏览器预览由 Dashboard 实时转码，录像文件保存在 Dashboard 主机本地。</p>
+            </div>
+            <div class="hero-stats">
+                <div class="stat"><strong id="camera-count">0</strong><span>已添加</span></div>
+                <div class="stat"><strong id="recording-count">0</strong><span>录像中</span></div>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <aside class="sidebar">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>ONVIF 自动探测</h2>
+                            <p class="panel-copy">使用 WS-Discovery 组播查找局域网摄像头；填写账号后会继续获取 RTSP 主码流地址。</p>
+                        </div>
+                    </div>
+                    <div class="field-grid">
+                        <label>ONVIF 用户名<input id="discover-user" autocomplete="username" placeholder="可留空"></label>
+                        <label>ONVIF 密码<input id="discover-password" type="password" autocomplete="current-password" placeholder="可留空"></label>
+                    </div>
+                    <div class="actions">
+                        <button id="btn-discover" class="btn btn-primary" type="button">探测局域网摄像头</button>
+                    </div>
+                    <div id="discover-status" class="form-status"></div>
+                    <div id="discover-results" class="discover-results">
+                        <strong>探测结果</strong>
+                        <div id="discover-list" class="discover-list"></div>
+                    </div>
+                </section>
+
+                <section class="panel" id="camera-form-panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2 id="camera-form-title">手动添加 RTSP</h2>
+                            <p class="panel-copy">浏览器不能直接播放 RTSP，Dashboard 会使用 FFmpeg 转成低延迟 MJPEG 供网页预览。</p>
+                        </div>
+                    </div>
+                    <div class="field-grid">
+                        <label class="full">名称<input id="camera-name" maxlength="80" placeholder="例如：车间入口"></label>
+                        <label class="full">RTSP 地址<input id="camera-url" spellcheck="false" placeholder="rtsp://192.168.1.20:554/stream1"></label>
+                        <label>用户名<input id="camera-user" autocomplete="username" placeholder="可留空"></label>
+                        <label>密码<input id="camera-password" type="password" autocomplete="current-password" placeholder="可留空"></label>
+                    </div>
+                    <div class="actions">
+                        <button id="btn-camera-save" class="btn btn-primary" type="button">保存摄像头</button>
+                        <button id="btn-camera-reset" class="btn btn-secondary" type="button">清空</button>
+                    </div>
+                    <div id="camera-form-status" class="form-status"></div>
+                    <div class="hint">账号密码会保存到当前 Dashboard 的本地运行目录，API 和页面不会回显密码。</div>
+                </section>
+            </aside>
+
+            <section>
+                <div class="content-head">
+                    <div><h2>摄像头列表</h2><span>预览按需启动，避免同时转码占满 CPU</span></div>
+                    <button id="btn-refresh" class="btn btn-secondary" type="button">刷新</button>
+                </div>
+                <div id="camera-grid" class="camera-grid"></div>
+            </section>
+        </div>
+    </main>
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const state = { cameras: [], editingId: null, discovered: [], discoveryCredentials: { username: '', password: '' } };
+        const el = {
+            count: document.getElementById('camera-count'),
+            recordingCount: document.getElementById('recording-count'),
+            grid: document.getElementById('camera-grid'),
+            discoverUser: document.getElementById('discover-user'),
+            discoverPassword: document.getElementById('discover-password'),
+            discoverButton: document.getElementById('btn-discover'),
+            discoverStatus: document.getElementById('discover-status'),
+            discoverResults: document.getElementById('discover-results'),
+            discoverList: document.getElementById('discover-list'),
+            formPanel: document.getElementById('camera-form-panel'),
+            formTitle: document.getElementById('camera-form-title'),
+            name: document.getElementById('camera-name'),
+            url: document.getElementById('camera-url'),
+            user: document.getElementById('camera-user'),
+            password: document.getElementById('camera-password'),
+            save: document.getElementById('btn-camera-save'),
+            reset: document.getElementById('btn-camera-reset'),
+            formStatus: document.getElementById('camera-form-status'),
+            refresh: document.getElementById('btn-refresh'),
+            toast: document.getElementById('toast'),
+        };
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+        }
+
+        function showToast(message) {
+            el.toast.textContent = message;
+            el.toast.classList.add('show');
+            clearTimeout(showToast.timer);
+            showToast.timer = setTimeout(() => el.toast.classList.remove('show'), 2400);
+        }
+
+        function setStatus(node, message, kind = '') {
+            node.textContent = message || '';
+            node.className = `form-status${kind ? ` ${kind}` : ''}`;
+        }
+
+        async function api(url, options = {}) {
+            const response = await fetch(url, options);
+            let payload = {};
+            try { payload = await response.json(); } catch (_) {}
+            if (!response.ok || payload.ok === false) throw new Error(payload.message || payload.error || `请求失败 (${response.status})`);
+            return payload;
+        }
+
+        function formatBytes(value) {
+            let amount = Number(value) || 0;
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let index = 0;
+            while (amount >= 1024 && index < units.length - 1) { amount /= 1024; index += 1; }
+            return `${amount >= 10 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`;
+        }
+
+        function renderCameras() {
+            el.count.textContent = state.cameras.length;
+            el.recordingCount.textContent = state.cameras.filter(camera => camera.recording).length;
+            if (!state.cameras.length) {
+                el.grid.innerHTML = '<div class="empty"><h3>还没有摄像头</h3><p>可以先进行 ONVIF 自动探测，也可以在左侧手动添加 RTSP 地址。</p></div>';
+                return;
+            }
+            el.grid.innerHTML = state.cameras.map(camera => {
+                const id = escapeHtml(camera.id);
+                const configured = Boolean(camera.rtsp_url);
+                const status = camera.recording
+                    ? '<span class="chip recording">REC 录像中</span>'
+                    : `<span class="chip">${configured ? (camera.source === 'onvif' ? 'ONVIF' : '手动') : '待配置'}</span>`;
+                return `<article class="camera-card" data-camera-id="${id}">
+                    <div class="camera-preview" id="preview-${id}">
+                        <div class="preview-placeholder">${configured ? '点击“开始预览”连接 RTSP' : '请先填写 ONVIF 账号或 RTSP 地址'}</div>
+                        <img id="preview-image-${id}" alt="${escapeHtml(camera.name)} 实时预览">
+                    </div>
+                    <div class="camera-body">
+                        <div class="camera-title-row">
+                            <div class="camera-title"><h3 title="${escapeHtml(camera.name)}">${escapeHtml(camera.name)}</h3><div class="camera-url" title="${escapeHtml(camera.rtsp_url || '未配置 RTSP 码流')}">${escapeHtml(camera.rtsp_url || '未配置 RTSP 码流')}</div></div>
+                            ${status}
+                        </div>
+                        <div class="camera-actions">
+                            <button class="btn btn-primary" data-action="preview" type="button" ${configured ? '' : 'disabled'}>${configured ? '开始预览' : '未配置码流'}</button>
+                            <button class="btn ${camera.recording ? 'btn-stop' : 'btn-record'}" data-action="record" type="button" ${configured ? '' : 'disabled'}>${camera.recording ? '停止录像' : '开始录像'}</button>
+                            <button class="btn btn-secondary" data-action="recordings" type="button">录像文件</button>
+                            <button class="btn btn-secondary" data-action="edit" type="button">编辑</button>
+                            <button class="btn btn-secondary" data-action="delete" type="button">删除</button>
+                        </div>
+                        <div class="recordings" id="recordings-${id}"></div>
+                    </div>
+                </article>`;
+            }).join('');
+        }
+
+        async function loadCameras() {
+            try {
+                const payload = await api('/api/cameras');
+                state.cameras = payload.cameras || [];
+                renderCameras();
+            } catch (error) {
+                el.grid.innerHTML = `<div class="empty"><h3>摄像头列表读取失败</h3><p>${escapeHtml(error.message)}</p></div>`;
+            }
+        }
+
+        function resetForm() {
+            state.editingId = null;
+            delete el.formPanel.dataset.onvifDeviceService;
+            delete el.formPanel.dataset.onvifProfileToken;
+            el.formTitle.textContent = '手动添加 RTSP';
+            el.name.value = '';
+            el.url.value = '';
+            el.user.value = '';
+            el.password.value = '';
+            el.password.placeholder = '可留空';
+            el.save.textContent = '保存摄像头';
+            setStatus(el.formStatus, '');
+        }
+
+        async function saveCamera(extra = {}) {
+            const body = {
+                id: state.editingId || undefined,
+                name: el.name.value.trim(),
+                rtsp_url: el.url.value.trim(),
+                username: el.user.value.trim(),
+                source: extra.source || (state.editingId ? undefined : 'manual'),
+                onvif_device_service: extra.device_service || undefined,
+                onvif_profile_token: extra.profile_token || undefined,
+            };
+            if (el.password.value) body.password = el.password.value;
+            el.save.disabled = true;
+            setStatus(el.formStatus, '正在保存…');
+            try {
+                const payload = await api('/api/cameras', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                setStatus(el.formStatus, payload.warning || '保存成功', payload.warning ? '' : 'success');
+                showToast('摄像头已保存');
+                resetForm();
+                await loadCameras();
+            } catch (error) {
+                setStatus(el.formStatus, error.message, 'error');
+            } finally {
+                el.save.disabled = false;
+            }
+        }
+
+        async function discover() {
+            state.discoveryCredentials = { username: el.discoverUser.value.trim(), password: el.discoverPassword.value };
+            el.discoverButton.disabled = true;
+            el.discoverResults.classList.remove('open');
+            setStatus(el.discoverStatus, '正在发送 ONVIF WS-Discovery 组播并读取设备信息，通常需要 4–10 秒…');
+            try {
+                const payload = await api('/api/cameras/discover', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ ...state.discoveryCredentials, timeout: 4 }),
+                });
+                state.discovered = payload.cameras || [];
+                renderDiscovered();
+                setStatus(el.discoverStatus, state.discovered.length ? `发现 ${state.discovered.length} 台 ONVIF 设备` : '没有收到 ONVIF 响应，请确认摄像头和 Dashboard 在同一广播域', state.discovered.length ? 'success' : '');
+            } catch (error) {
+                setStatus(el.discoverStatus, error.message, 'error');
+            } finally {
+                el.discoverButton.disabled = false;
+            }
+        }
+
+        function renderDiscovered() {
+            el.discoverResults.classList.add('open');
+            if (!state.discovered.length) {
+                el.discoverList.innerHTML = '<div class="discover-item"><div class="discover-meta">暂无结果</div></div>';
+                return;
+            }
+            el.discoverList.innerHTML = state.discovered.map((camera, index) => `<div class="discover-item">
+                <div class="discover-item-head"><strong>${escapeHtml(camera.name || camera.ip || 'ONVIF Camera')}</strong><span class="chip">${escapeHtml(camera.ip || '未知 IP')}</span></div>
+                <div class="discover-meta">${camera.rtsp_url ? escapeHtml(camera.rtsp_url) : '已发现设备，但未取得 RTSP 地址；通常需要填写正确的 ONVIF 账号密码。'}</div>
+                <button class="btn btn-secondary" data-discovered-index="${index}" type="button">添加到摄像头列表</button>
+            </div>`).join('');
+        }
+
+        function useDiscovered(index) {
+            const camera = state.discovered[index];
+            if (!camera) return;
+            resetForm();
+            el.name.value = camera.name || camera.ip || 'ONVIF Camera';
+            el.url.value = camera.rtsp_url || '';
+            el.user.value = state.discoveryCredentials.username;
+            el.password.value = state.discoveryCredentials.password;
+            el.formPanel.dataset.onvifDeviceService = camera.device_service || '';
+            el.formPanel.dataset.onvifProfileToken = camera.profile_token || '';
+            el.formTitle.textContent = camera.rtsp_url ? '添加探测到的摄像头' : '添加待配置 ONVIF 设备';
+            el.formPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setStatus(el.formStatus, camera.rtsp_url ? '已自动填入 ONVIF 主码流地址，确认后保存。' : '可以直接保存；之后在摄像头列表点“编辑”填写账号，系统会自动重新获取 RTSP 地址。');
+        }
+
+        function editCamera(camera) {
+            state.editingId = camera.id;
+            el.formTitle.textContent = '编辑摄像头';
+            el.name.value = camera.name || '';
+            el.url.value = camera.rtsp_url || '';
+            el.user.value = camera.username || '';
+            el.password.value = '';
+            el.password.placeholder = camera.has_password ? '已保存；留空保持不变' : '可留空';
+            el.save.textContent = '保存修改';
+            el.formPanel.dataset.onvifDeviceService = camera.onvif_device_service || '';
+            el.formPanel.dataset.onvifProfileToken = camera.onvif_profile_token || '';
+            el.formPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setStatus(el.formStatus, camera.rtsp_url ? '' : '这是未配置码流的 ONVIF 设备；填写账号密码后保存，会自动获取 RTSP 地址。');
+        }
+
+        function togglePreview(camera, button) {
+            const box = document.getElementById(`preview-${camera.id}`);
+            const image = document.getElementById(`preview-image-${camera.id}`);
+            if (box.classList.contains('active')) {
+                box.classList.remove('active');
+                image.removeAttribute('src');
+                button.textContent = '开始预览';
+                return;
+            }
+            box.classList.add('active');
+            button.textContent = '停止预览';
+            image.onerror = () => {
+                box.classList.remove('active');
+                image.removeAttribute('src');
+                button.textContent = '重试预览';
+                showToast('RTSP 预览连接失败，请检查地址和账号');
+            };
+            image.src = `/api/cameras/${encodeURIComponent(camera.id)}/preview?t=${Date.now()}`;
+        }
+
+        async function toggleRecording(camera, button) {
+            button.disabled = true;
+            try {
+                await api(`/api/cameras/${encodeURIComponent(camera.id)}/recording`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ action: camera.recording ? 'stop' : 'start' }),
+                });
+                showToast(camera.recording ? '录像已停止' : '录像已开始');
+                await loadCameras();
+            } catch (error) {
+                showToast(error.message);
+                button.disabled = false;
+            }
+        }
+
+        async function loadRecordings(camera) {
+            const box = document.getElementById(`recordings-${camera.id}`);
+            if (box.classList.contains('open')) { box.classList.remove('open'); return; }
+            box.classList.add('open');
+            box.innerHTML = '正在读取录像文件…';
+            try {
+                const payload = await api(`/api/cameras/${encodeURIComponent(camera.id)}/recordings`);
+                const files = payload.recordings || [];
+                box.innerHTML = files.length ? files.map(file => `<div class="recording-row"><div><strong>${escapeHtml(file.name)}</strong><br><span>${formatBytes(file.size)} · ${escapeHtml(file.modified_at)}</span></div><a href="/api/cameras/${encodeURIComponent(camera.id)}/recordings/${encodeURIComponent(file.name)}">下载</a></div>`).join('') : '<div class="hint">还没有录像文件。</div>';
+            } catch (error) {
+                box.innerHTML = `<div class="hint">${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        async function deleteCamera(camera) {
+            if (!window.confirm(`确认删除摄像头“${camera.name}”？已生成的录像文件不会自动删除。`)) return;
+            try {
+                await api(`/api/cameras/${encodeURIComponent(camera.id)}`, { method: 'DELETE' });
+                showToast('摄像头已删除');
+                await loadCameras();
+            } catch (error) { showToast(error.message); }
+        }
+
+        el.discoverButton.addEventListener('click', discover);
+        el.discoverList.addEventListener('click', event => {
+            const button = event.target.closest('[data-discovered-index]');
+            if (button) useDiscovered(Number(button.dataset.discoveredIndex));
+        });
+        el.save.addEventListener('click', () => saveCamera({
+            source: el.formPanel.dataset.onvifDeviceService ? 'onvif' : undefined,
+            device_service: el.formPanel.dataset.onvifDeviceService || undefined,
+            profile_token: el.formPanel.dataset.onvifProfileToken || undefined,
+        }));
+        el.reset.addEventListener('click', () => { delete el.formPanel.dataset.onvifDeviceService; delete el.formPanel.dataset.onvifProfileToken; resetForm(); });
+        el.refresh.addEventListener('click', loadCameras);
+        el.grid.addEventListener('click', event => {
+            const button = event.target.closest('[data-action]');
+            const card = event.target.closest('[data-camera-id]');
+            if (!button || !card) return;
+            const camera = state.cameras.find(item => item.id === card.dataset.cameraId);
+            if (!camera) return;
+            if (button.dataset.action === 'preview') togglePreview(camera, button);
+            if (button.dataset.action === 'record') toggleRecording(camera, button);
+            if (button.dataset.action === 'recordings') loadRecordings(camera);
+            if (button.dataset.action === 'edit') editCamera(camera);
+            if (button.dataset.action === 'delete') deleteCamera(camera);
+        });
+
+        loadCameras();
+    </script>
+</body>
+</html>

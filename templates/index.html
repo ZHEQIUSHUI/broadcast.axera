@@ -89,6 +89,31 @@
             padding: 22px 0 36px;
         }
 
+        .page-nav {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .page-nav a {
+            padding: 8px 13px;
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.62);
+            font-size: 12px;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .page-nav a.active,
+        .page-nav a:hover {
+            color: var(--accent-strong);
+            border-color: var(--accent);
+            background: var(--accent-tint);
+        }
+
         /* ===================================================
            Hero / summary
         ==================================================== */
@@ -3606,6 +3631,10 @@
         <button class="notification-ticker-close" id="btn-notification-ticker-close" type="button" aria-label="关闭通知条">×</button>
     </div>
     <div class="shell">
+        <nav class="page-nav" aria-label="页面导航">
+            <a href="/" class="active">设备管理</a>
+            <a href="/cameras">摄像头</a>
+        </nav>
         <header class="hero">
             <div class="hero-card">
                 <div class="eyebrow">Broadcast Dashboard</div>

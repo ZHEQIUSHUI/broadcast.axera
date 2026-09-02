@@ -11,12 +11,13 @@ import tarfile
 import uuid
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import paramiko
-from flask import Flask, abort, jsonify, render_template, request, send_file
+from flask import Flask, Response, abort, jsonify, render_template, request, send_file, send_from_directory, stream_with_context
 
 UDP_PORT = int(os.getenv("UDP_PORT", "9999"))
 BUFFER_SIZE = 8192
@@ -45,6 +46,8 @@ DEVICE_METADATA_PATH = os.path.join(RUNTIME_ROOT, "device_metadata.json")
 DEVICE_OCCUPANCY_PATH = os.path.join(RUNTIME_ROOT, "device_occupancy.json")
 REMOTE_DASHBOARDS_PATH = os.path.join(RUNTIME_ROOT, "remote_dashboards.json")
 NOTIFICATIONS_PATH = os.path.join(RUNTIME_ROOT, "notifications.json")
+CAMERAS_PATH = os.path.join(RUNTIME_ROOT, "cameras.json")
+CAMERA_RECORDINGS_ROOT = os.path.join(RUNTIME_ROOT, "camera_recordings")
 DEVICE_OCCUPANCY_TTL_SECONDS = max(60, min(86400, int(os.getenv("DEVICE_OCCUPANCY_TTL_SECONDS", "86400"))))
 NOTIFICATION_MAX_ACTIVE = int(os.getenv("NOTIFICATION_MAX_ACTIVE", "20"))
 NOTIFICATION_LEVELS = ("info", "success", "warn", "danger")
@@ -53,6 +56,10 @@ DASHBOARD_SITE_LABEL = (os.getenv("DASHBOARD_SITE_LABEL", "本地") or "本地")
 DASHBOARD_SITE_NOTE = (os.getenv("DASHBOARD_SITE_NOTE", "") or "").strip()
 REMOTE_FETCH_TIMEOUT_SECONDS = float(os.getenv("REMOTE_FETCH_TIMEOUT_SECONDS", "2.5"))
 REMOTE_FETCH_MAX_PARALLEL = int(os.getenv("REMOTE_FETCH_MAX_PARALLEL", "8"))
+ONVIF_DISCOVERY_TIMEOUT_SECONDS = float(os.getenv("ONVIF_DISCOVERY_TIMEOUT_SECONDS", "4"))
+ONVIF_REQUEST_TIMEOUT_SECONDS = float(os.getenv("ONVIF_REQUEST_TIMEOUT_SECONDS", "6"))
+CAMERA_RECORDING_SEGMENT_SECONDS = max(60, int(os.getenv("CAMERA_RECORDING_SEGMENT_SECONDS", "3600")))
+CAMERA_PREVIEW_FPS = max(1, min(15, int(os.getenv("CAMERA_PREVIEW_FPS", "8"))))
 
 ANSI_OSC_RE = re.compile(r"\x1b\][^\x07]*(?:\x07|\x1b\\)")
 ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -87,6 +94,10 @@ terminal_sessions = {}
 terminal_lock = threading.Lock()
 update_jobs = {}
 update_lock = threading.Lock()
+cameras = {}
+camera_lock = threading.Lock()
+camera_recording_processes = {}
+camera_recording_lock = threading.Lock()
 
 
 class PasswordRequiredError(Exception):
@@ -902,6 +913,477 @@ def list_notifications(include_inactive=False):
     return items
 
 
+# ---------------------------------------------------------------------------
+# IP camera support
+# ---------------------------------------------------------------------------
+
+ONVIF_DISCOVERY_ADDRESS = ("239.255.255.250", 3702)
+ONVIF_PROBE_MESSAGE = """<?xml version="1.0" encoding="utf-8"?>
+<e:Envelope xmlns:e="http://www.w3.org/2003/05/soap-envelope"
+    xmlns:w="http://schemas.xmlsoap.org/ws/2004/08/addressing"
+    xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery"
+    xmlns:dn="http://www.onvif.org/ver10/network/wsdl">
+  <e:Header>
+    <w:MessageID>urn:uuid:{message_id}</w:MessageID>
+    <w:To>urn:schemas-xmlsoap-org:ws:2005:04:discovery</w:To>
+    <w:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</w:Action>
+  </e:Header>
+  <e:Body><d:Probe><d:Types>dn:NetworkVideoTransmitter</d:Types></d:Probe></e:Body>
+</e:Envelope>"""
+ONVIF_SOAP_ENV_NS = "http://www.w3.org/2003/05/soap-envelope"
+ONVIF_DEVICE_NS = "http://www.onvif.org/ver10/device/wsdl"
+ONVIF_MEDIA_NS = "http://www.onvif.org/ver10/media/wsdl"
+ONVIF_SCHEMA_NS = "http://www.onvif.org/ver10/schema"
+
+
+def xml_local_name(tag):
+    return str(tag or "").rsplit("}", 1)[-1].split(":")[-1]
+
+
+def xml_first_text(root, name):
+    wanted = name.lower()
+    for element in root.iter():
+        if xml_local_name(element.tag).lower() == wanted and element.text:
+            text = element.text.strip()
+            if text:
+                return text
+    return ""
+
+
+def xml_all_text(root, name):
+    wanted = name.lower()
+    values = []
+    for element in root.iter():
+        if xml_local_name(element.tag).lower() == wanted and element.text:
+            text = element.text.strip()
+            if text and text not in values:
+                values.append(text)
+    return values
+
+
+def camera_id(value):
+    text = clean_text(value)
+    return text if re.fullmatch(r"[A-Za-z0-9_-]{8,80}", text) else ""
+
+
+def normalize_camera_name(value, fallback="IP Camera"):
+    text = clean_text(value) or fallback
+    return text[:80]
+
+
+def normalize_rtsp_url(value):
+    text = clean_text(value)
+    if not text:
+        raise ValueError("RTSP 地址不能为空")
+    parsed = urlsplit(text)
+    if parsed.scheme.lower() not in ("rtsp", "rtsps"):
+        raise ValueError("RTSP 地址必须以 rtsp:// 或 rtsps:// 开头")
+    if not parsed.hostname:
+        raise ValueError("RTSP 地址缺少主机名")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("RTSP 端口无效") from exc
+    if port is not None and not (1 <= port <= 65535):
+        raise ValueError("RTSP 端口无效")
+    host = parsed.hostname
+    host_display = f"[{host}]" if ":" in host else host
+    netloc = host_display if port is None else f"{host_display}:{port}"
+    path = parsed.path or "/"
+    return urlunsplit((parsed.scheme.lower(), netloc, path, parsed.query, ""))
+
+
+def rtsp_url_credentials(value):
+    """Return (clean_url, embedded_username, embedded_password).
+
+    Pasted RTSP URLs often contain ``rtsp://user:password@host/...``.  The
+    URL is kept credential-free in the persisted/public record while the
+    credentials are moved into the dedicated fields used by FFmpeg.
+    """
+    parsed = urlsplit(clean_text(value))
+    username = unquote(parsed.username or "")
+    password = unquote(parsed.password or "")
+    return normalize_rtsp_url(value), username, password
+
+
+def camera_stream_url(camera):
+    base_url = normalize_rtsp_url(camera.get("rtsp_url"))
+    parsed = urlsplit(base_url)
+    username = clean_text(camera.get("username"))
+    password = "" if camera.get("password") is None else str(camera.get("password"))
+    if not username:
+        return base_url
+    host = parsed.hostname or ""
+    host_display = f"[{host}]" if ":" in host else host
+    netloc = f"{quote(username, safe='')}:{quote(password, safe='')}@{host_display}"
+    if parsed.port is not None:
+        netloc += f":{parsed.port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, ""))
+
+
+def camera_public_url(camera):
+    try:
+        parsed = urlsplit(normalize_rtsp_url(camera.get("rtsp_url")))
+        host = parsed.hostname or ""
+        host_display = f"[{host}]" if ":" in host else host
+        netloc = host_display if parsed.port is None else f"{host_display}:{parsed.port}"
+        return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, ""))
+    except ValueError:
+        return ""
+
+
+def normalize_camera_record(record, key=""):
+    if not isinstance(record, dict):
+        return None
+    record_id = camera_id(record.get("id")) or camera_id(key) or uuid.uuid4().hex
+    raw_rtsp_url = record.get("rtsp_url") or record.get("url")
+    try:
+        rtsp_url = normalize_rtsp_url(raw_rtsp_url) if raw_rtsp_url else ""
+    except ValueError:
+        return None
+    onvif_device_service = clean_text(record.get("onvif_device_service"))[:500]
+    if not rtsp_url and not onvif_device_service:
+        return None
+    username = clean_text(record.get("username"))
+    password = "" if record.get("password") is None else str(record.get("password"))
+    return {
+        "id": record_id,
+        "name": normalize_camera_name(record.get("name") or record.get("label"), "IP Camera"),
+        "rtsp_url": rtsp_url,
+        "username": username[:120],
+        "password": password[:400],
+        "source": clean_text(record.get("source"), "manual")[:20] or "manual",
+        "onvif_device_service": onvif_device_service,
+        "onvif_profile_token": clean_text(record.get("onvif_profile_token"))[:200],
+        "created_at": clean_text(record.get("created_at")) or now_iso(),
+        "updated_at": clean_text(record.get("updated_at")) or now_iso(),
+    }
+
+
+def load_camera_records():
+    if not os.path.exists(CAMERAS_PATH):
+        return {}
+    try:
+        with open(CAMERAS_PATH, "r", encoding="utf-8") as stream:
+            payload = json.load(stream)
+    except Exception as exc:
+        print(f"failed to load cameras: {exc}")
+        return {}
+    records = payload.get("records") if isinstance(payload, dict) and isinstance(payload.get("records"), dict) else payload
+    if isinstance(records, list):
+        records = {str(index): item for index, item in enumerate(records)}
+    if not isinstance(records, dict):
+        return {}
+    normalized = {}
+    for key, record in records.items():
+        camera = normalize_camera_record(record, key)
+        if camera:
+            normalized[camera["id"]] = camera
+    return normalized
+
+
+def persist_camera_records_locked():
+    sanitized = {key: dict(record) for key, record in cameras.items()}
+    atomic_write_json(CAMERAS_PATH, {"version": 1, "updated_at": now_iso(), "records": sanitized})
+
+
+def camera_recording_state(camera_id_value):
+    with camera_recording_lock:
+        item = camera_recording_processes.get(camera_id_value)
+        if not item:
+            return {"recording": False}
+        process = item.get("process")
+        if process is None or process.poll() is not None:
+            camera_recording_processes.pop(camera_id_value, None)
+            return {"recording": False, "finished_at": item.get("started_at")}
+        return {
+            "recording": True,
+            "started_at": item.get("started_at"),
+            "directory": item.get("directory", ""),
+        }
+
+
+def serialize_camera(camera):
+    payload = {
+        "id": camera.get("id"),
+        "name": camera.get("name"),
+        "rtsp_url": camera_public_url(camera),
+        "username": clean_text(camera.get("username")),
+        "has_password": bool(camera.get("password")),
+        "source": camera.get("source", "manual"),
+        "onvif_device_service": camera.get("onvif_device_service", ""),
+        "onvif_profile_token": camera.get("onvif_profile_token", ""),
+        "created_at": camera.get("created_at", ""),
+        "updated_at": camera.get("updated_at", ""),
+    }
+    payload.update(camera_recording_state(camera.get("id")))
+    return payload
+
+
+def onvif_discover(timeout_seconds=None):
+    timeout_seconds = max(0.5, min(15.0, float(timeout_seconds or ONVIF_DISCOVERY_TIMEOUT_SECONDS)))
+    message = ONVIF_PROBE_MESSAGE.format(message_id=uuid.uuid4())
+    results = {}
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    try:
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+        sock.settimeout(0.25)
+        sock.sendto(message.encode("utf-8"), ONVIF_DISCOVERY_ADDRESS)
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            try:
+                data, address = sock.recvfrom(65535)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            try:
+                root = ET.fromstring(data)
+            except ET.ParseError:
+                continue
+            xaddrs = []
+            for value in xml_all_text(root, "XAddrs"):
+                xaddrs.extend(item for item in value.split() if item)
+            device_service = next((item for item in xaddrs if item.lower().startswith(("http://", "https://"))), "")
+            endpoint = xml_first_text(root, "Address")
+            scopes = xml_all_text(root, "Scopes")
+            key = device_service or endpoint or (address[0] if address else "")
+            if not key:
+                continue
+            previous = results.get(key, {})
+            previous.update({
+                "endpoint": endpoint or previous.get("endpoint", ""),
+                "device_service": device_service or previous.get("device_service", ""),
+                "scopes": list(dict.fromkeys(previous.get("scopes", []) + scopes)),
+                "ip": address[0] if address else previous.get("ip", ""),
+            })
+            results[key] = previous
+    finally:
+        sock.close()
+    return list(results.values())
+
+
+def onvif_soap_post(url, body, username="", password="", action=""):
+    if not url:
+        return None
+    request_body = body.encode("utf-8") if isinstance(body, str) else body
+    req = urllib.request.Request(
+        url,
+        data=request_body,
+        method="POST",
+        headers={
+            "Content-Type": "application/soap+xml; charset=utf-8",
+            "User-Agent": "broadcast.axera/1.0",
+            "SOAPAction": action,
+        },
+    )
+    handlers = []
+    if username:
+        manager = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+        manager.add_password(None, url, username, password)
+        handlers.extend([urllib.request.HTTPDigestAuthHandler(manager), urllib.request.HTTPBasicAuthHandler(manager)])
+    opener = urllib.request.build_opener(*handlers)
+    try:
+        with opener.open(req, timeout=ONVIF_REQUEST_TIMEOUT_SECONDS) as response:
+            return ET.fromstring(response.read(2 * 1024 * 1024))
+    except (OSError, urllib.error.URLError, ET.ParseError):
+        return None
+
+
+def onvif_soap_envelope(namespace, operation, content=""):
+    return (
+        f'<s:Envelope xmlns:s="{ONVIF_SOAP_ENV_NS}" xmlns:tds="{ONVIF_DEVICE_NS}" '
+        f'xmlns:trt="{ONVIF_MEDIA_NS}" xmlns:tt="{ONVIF_SCHEMA_NS}">'
+        f"<s:Body><{namespace}:{operation}>{content}</{namespace}:{operation}></s:Body></s:Envelope>"
+    )
+
+
+def onvif_get_camera_details(device_service, username="", password=""):
+    if not device_service:
+        return {}
+    details = {"device_service": device_service}
+    info_root = onvif_soap_post(
+        device_service,
+        onvif_soap_envelope("tds", "GetDeviceInformation"),
+        username,
+        password,
+        "http://www.onvif.org/ver10/device/wsdl/GetDeviceInformation",
+    )
+    if info_root is not None:
+        details["manufacturer"] = xml_first_text(info_root, "Manufacturer")
+        details["model"] = xml_first_text(info_root, "Model")
+        details["firmware"] = xml_first_text(info_root, "FirmwareVersion")
+
+    capabilities_root = onvif_soap_post(
+        device_service,
+        onvif_soap_envelope("tds", "GetCapabilities", "<tds:Category>All</tds:Category>"),
+        username,
+        password,
+        "http://www.onvif.org/ver10/device/wsdl/GetCapabilities",
+    )
+    media_service = ""
+    if capabilities_root is not None:
+        candidates = [value for value in xml_all_text(capabilities_root, "XAddr") if value.lower().startswith(("http://", "https://"))]
+        media_service = next((value for value in candidates if "media" in value.lower()), "")
+        if not media_service and candidates:
+            media_service = candidates[0]
+
+    if media_service:
+        profiles_root = onvif_soap_post(
+            media_service,
+            onvif_soap_envelope("trt", "GetProfiles"),
+            username,
+            password,
+            "http://www.onvif.org/ver10/media/wsdl/GetProfiles",
+        )
+        profile_token = ""
+        profile_name = ""
+        if profiles_root is not None:
+            for element in profiles_root.iter():
+                if xml_local_name(element.tag).lower() != "profile":
+                    continue
+                profile_token = next((value for key, value in element.attrib.items() if xml_local_name(key).lower() == "token"), "")
+                profile_name = xml_first_text(element, "Name")
+                if profile_token:
+                    break
+        if profile_token:
+            stream_root = onvif_soap_post(
+                media_service,
+                onvif_soap_envelope(
+                    "trt",
+                    "GetStreamUri",
+                    "<trt:StreamSetup><tt:Stream>RTP-Unicast</tt:Stream>"
+                    "<tt:Transport><tt:Protocol>RTSP</tt:Protocol></tt:Transport></trt:StreamSetup>"
+                    f"<trt:ProfileToken>{profile_token}</trt:ProfileToken>",
+                ),
+                username,
+                password,
+                "http://www.onvif.org/ver10/media/wsdl/GetStreamUri",
+            )
+            stream_uri = xml_first_text(stream_root, "Uri") if stream_root is not None else ""
+            if stream_uri.lower().startswith(("rtsp://", "rtsps://")):
+                details["rtsp_url"] = camera_public_url({"rtsp_url": stream_uri})
+                details["profile_token"] = profile_token
+                details["profile_name"] = profile_name
+        details["media_service"] = media_service
+    return details
+
+
+def discover_onvif_cameras(timeout_seconds=None, username="", password=""):
+    responses = onvif_discover(timeout_seconds=timeout_seconds)
+    if not responses:
+        return []
+
+    def enrich(item):
+        details = onvif_get_camera_details(item.get("device_service", ""), username, password)
+        result = dict(item)
+        result.update(details)
+        result["ip"] = result.get("ip") or ""
+        result["name"] = " ".join(filter(None, [result.get("manufacturer"), result.get("model")])) or result.get("ip") or "ONVIF Camera"
+        result["rtsp_url"] = result.get("rtsp_url", "")
+        return result
+
+    results = []
+    with ThreadPoolExecutor(max_workers=min(8, len(responses))) as executor:
+        futures = [executor.submit(enrich, item) for item in responses]
+        for future in as_completed(futures):
+            try:
+                results.append(future.result())
+            except Exception:
+                continue
+    results.sort(key=lambda item: (item.get("ip", ""), item.get("device_service", "")))
+    return results
+
+
+def camera_process_command(camera, output_path=None):
+    stream_url = camera_stream_url(camera)
+    if output_path:
+        recording_dir = os.path.dirname(output_path)
+        os.makedirs(recording_dir, exist_ok=True)
+        return [
+            "ffmpeg", "-hide_banner", "-loglevel", "warning", "-y", "-rtsp_transport", "tcp",
+            "-i", stream_url, "-map", "0:v:0", "-c:v", "copy", "-an", "-f", "segment",
+            "-segment_time", str(CAMERA_RECORDING_SEGMENT_SECONDS), "-reset_timestamps", "1",
+            "-strftime", "1", output_path,
+        ]
+    return [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", stream_url,
+        "-an", "-vf", f"fps={CAMERA_PREVIEW_FPS}", "-q:v", "6", "-f", "mjpeg", "pipe:1",
+    ]
+
+
+def start_camera_recording(camera):
+    camera_id_value = camera["id"]
+    with camera_recording_lock:
+        existing = camera_recording_processes.get(camera_id_value)
+        if existing and existing.get("process") is not None and existing["process"].poll() is None:
+            return {"ok": True, "already_recording": True}
+        directory = os.path.join(CAMERA_RECORDINGS_ROOT, camera_id_value)
+        os.makedirs(directory, exist_ok=True)
+        pattern = os.path.join(directory, "camera-%Y%m%d-%H%M%S.mp4")
+        try:
+            process = subprocess.Popen(camera_process_command(camera, pattern), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "message": f"启动录像失败: {exc}"}
+        camera_recording_processes[camera_id_value] = {"process": process, "started_at": now_iso(), "directory": directory}
+    return {"ok": True, "recording": True}
+
+
+def stop_camera_recording(camera_id_value):
+    with camera_recording_lock:
+        item = camera_recording_processes.pop(camera_id_value, None)
+    if not item:
+        return {"ok": True, "recording": False, "already_stopped": True}
+    process = item.get("process")
+    if process is not None and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=4)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+    return {"ok": True, "recording": False}
+
+
+def iter_camera_mjpeg(camera):
+    process = None
+    try:
+        process = subprocess.Popen(camera_process_command(camera), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        buffer = b""
+        while True:
+            chunk = process.stdout.read(64 * 1024)
+            if not chunk:
+                break
+            buffer += chunk
+            while True:
+                start = buffer.find(b"\xff\xd8")
+                if start < 0:
+                    buffer = buffer[-1:]
+                    break
+                end = buffer.find(b"\xff\xd9", start + 2)
+                if end < 0:
+                    if start > 0:
+                        buffer = buffer[start:]
+                    break
+                frame = buffer[start : end + 2]
+                buffer = buffer[end + 2 :]
+                yield (
+                    b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                    + str(len(frame)).encode("ascii")
+                    + b"\r\nCache-Control: no-cache\r\n\r\n"
+                    + frame
+                    + b"\r\n"
+                )
+    finally:
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+
 def resolve_device_metadata(payload, ip_address=""):
     keys = device_metadata_keys_for_payload(payload, ip_address)
     with metadata_lock:
@@ -927,6 +1409,7 @@ device_metadata = load_device_metadata_records()
 device_occupancy = load_device_occupancy_records()
 remote_dashboards = load_remote_dashboards_records()
 notifications = load_notifications_records()
+cameras = load_camera_records()
 
 
 STORAGE_DISPLAY_LIMIT = 3
@@ -3336,6 +3819,195 @@ def index():
         webssh2_url_template=webssh2_url_template,
         update_max_parallel=UPDATE_MAX_PARALLEL,
     )
+
+
+@app.route("/cameras")
+def cameras_page():
+    return render_template("cameras.html")
+
+
+@app.route("/api/cameras")
+def api_cameras_list():
+    with camera_lock:
+        items = [serialize_camera(camera) for camera in cameras.values()]
+    items.sort(key=lambda item: (item.get("name") or "", item.get("id") or ""))
+    return jsonify({"ok": True, "cameras": items})
+
+
+@app.route("/api/cameras", methods=["POST"])
+def api_cameras_upsert():
+    body = request.get_json(silent=True) or {}
+    requested_id = camera_id(body.get("id"))
+    with camera_lock:
+        existing = dict(cameras.get(requested_id, {})) if requested_id else {}
+    raw_rtsp_url = body.get("rtsp_url") or body.get("url") or existing.get("rtsp_url")
+    embedded_username = ""
+    embedded_password = ""
+    if raw_rtsp_url:
+        try:
+            rtsp_url, embedded_username, embedded_password = rtsp_url_credentials(raw_rtsp_url)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "invalid_rtsp_url", "message": str(exc)}), 400
+    else:
+        rtsp_url = ""
+
+    password = body.get("password")
+    if password is None and embedded_password:
+        password = embedded_password
+    elif password is None and existing:
+        password = existing.get("password", "")
+    username = clean_text(body.get("username")) if body.get("username") is not None else ""
+    if not username:
+        username = embedded_username or clean_text(existing.get("username"))
+    onvif_device_service = clean_text(body.get("onvif_device_service"), existing.get("onvif_device_service", ""))[:500]
+    onvif_profile_token = clean_text(body.get("onvif_profile_token"), existing.get("onvif_profile_token", ""))[:200]
+    warning = ""
+    if not rtsp_url and onvif_device_service and (username or password):
+        details = onvif_get_camera_details(onvif_device_service, username, "" if password is None else str(password))
+        discovered_rtsp = clean_text(details.get("rtsp_url"))
+        if discovered_rtsp:
+            rtsp_url = discovered_rtsp
+            onvif_profile_token = clean_text(details.get("profile_token")) or onvif_profile_token
+        else:
+            warning = "ONVIF 账号已保存，但暂未取得 RTSP 地址；可以手动填写 RTSP 路径。"
+    if not rtsp_url and not onvif_device_service:
+        return jsonify({"ok": False, "error": "missing_rtsp_or_onvif", "message": "请填写 RTSP 地址，或先从 ONVIF 探测结果添加设备"}), 400
+    record = {
+        "id": requested_id or uuid.uuid4().hex,
+        "name": normalize_camera_name(body.get("name") or body.get("label") or existing.get("name"), "IP Camera"),
+        "rtsp_url": rtsp_url,
+        "username": username[:120],
+        "password": "" if password is None else str(password)[:400],
+        "source": clean_text(body.get("source"), existing.get("source", "manual"))[:20] or "manual",
+        "onvif_device_service": onvif_device_service,
+        "onvif_profile_token": onvif_profile_token,
+        "created_at": existing.get("created_at") or now_iso(),
+        "updated_at": now_iso(),
+    }
+    with camera_lock:
+        cameras[record["id"]] = record
+        persist_camera_records_locked()
+        payload = serialize_camera(record)
+    response = {"ok": True, "camera": payload}
+    if warning:
+        response["warning"] = warning
+    return jsonify(response)
+
+
+@app.route("/api/cameras/<camera_id_value>", methods=["DELETE"])
+def api_cameras_delete(camera_id_value):
+    camera_id_value = camera_id(camera_id_value)
+    if not camera_id_value:
+        return jsonify({"ok": False, "error": "invalid_camera_id"}), 400
+    stop_camera_recording(camera_id_value)
+    with camera_lock:
+        record = cameras.pop(camera_id_value, None)
+        if record is None:
+            return jsonify({"ok": False, "error": "camera_not_found"}), 404
+        persist_camera_records_locked()
+    return jsonify({"ok": True, "camera": serialize_camera(record)})
+
+
+@app.route("/api/cameras/discover", methods=["POST"])
+def api_cameras_discover():
+    body = request.get_json(silent=True) or {}
+    timeout_seconds = safe_float(body.get("timeout")) or ONVIF_DISCOVERY_TIMEOUT_SECONDS
+    username = clean_text(body.get("username"))
+    password = "" if body.get("password") is None else str(body.get("password"))
+    try:
+        discovered = discover_onvif_cameras(timeout_seconds=timeout_seconds, username=username, password=password)
+    except OSError as exc:
+        return jsonify({"ok": False, "error": "discovery_failed", "message": str(exc)}), 500
+    public = []
+    for item in discovered:
+        result = {
+            "ip": item.get("ip", ""),
+            "name": item.get("name", "ONVIF Camera"),
+            "manufacturer": item.get("manufacturer", ""),
+            "model": item.get("model", ""),
+            "firmware": item.get("firmware", ""),
+            "device_service": item.get("device_service", ""),
+            "rtsp_url": item.get("rtsp_url", ""),
+            "profile_token": item.get("profile_token", ""),
+            "profile_name": item.get("profile_name", ""),
+            "scopes": item.get("scopes", []),
+        }
+        public.append(result)
+    return jsonify({"ok": True, "cameras": public, "count": len(public)})
+
+
+@app.route("/api/cameras/<camera_id_value>/preview")
+def api_camera_preview(camera_id_value):
+    camera_id_value = camera_id(camera_id_value)
+    with camera_lock:
+        camera = dict(cameras.get(camera_id_value, {})) if camera_id_value else None
+    if not camera:
+        return jsonify({"ok": False, "error": "camera_not_found"}), 404
+    try:
+        camera_process_command(camera)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": "invalid_rtsp_url", "message": str(exc)}), 400
+    response = Response(
+        stream_with_context(iter_camera_mjpeg(camera)),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.route("/api/cameras/<camera_id_value>/recording", methods=["POST"])
+def api_camera_recording(camera_id_value):
+    camera_id_value = camera_id(camera_id_value)
+    with camera_lock:
+        camera = dict(cameras.get(camera_id_value, {})) if camera_id_value else None
+    if not camera:
+        return jsonify({"ok": False, "error": "camera_not_found"}), 404
+    body = request.get_json(silent=True) or {}
+    action = clean_text(body.get("action"), "start").lower()
+    if action in ("stop", "off", "停止"):
+        result = stop_camera_recording(camera_id_value)
+    else:
+        try:
+            camera_process_command(camera, os.path.join(CAMERA_RECORDINGS_ROOT, camera_id_value, "camera-%Y%m%d-%H%M%S.mp4"))
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "invalid_rtsp_url", "message": str(exc)}), 400
+        result = start_camera_recording(camera)
+    result["camera"] = serialize_camera(camera)
+    return jsonify(result)
+
+
+@app.route("/api/cameras/<camera_id_value>/recordings")
+def api_camera_recordings(camera_id_value):
+    camera_id_value = camera_id(camera_id_value)
+    with camera_lock:
+        exists = bool(camera_id_value and camera_id_value in cameras)
+    if not exists:
+        return jsonify({"ok": False, "error": "camera_not_found"}), 404
+    directory = os.path.join(CAMERA_RECORDINGS_ROOT, camera_id_value)
+    items = []
+    try:
+        for entry in os.scandir(directory):
+            if not entry.is_file() or not entry.name.lower().endswith((".mp4", ".mkv", ".ts")):
+                continue
+            stat = entry.stat()
+            items.append({"name": entry.name, "size": stat.st_size, "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")})
+    except OSError:
+        pass
+    items.sort(key=lambda item: item.get("modified_at", ""), reverse=True)
+    return jsonify({"ok": True, "recordings": items})
+
+
+@app.route("/api/cameras/<camera_id_value>/recordings/<path:filename>")
+def api_camera_recording_download(camera_id_value, filename):
+    camera_id_value = camera_id(camera_id_value)
+    safe_name = os.path.basename(filename)
+    if not camera_id_value or safe_name != filename or not safe_name.lower().endswith((".mp4", ".mkv", ".ts")):
+        abort(404)
+    with camera_lock:
+        if camera_id_value not in cameras:
+            abort(404)
+    return send_from_directory(os.path.join(CAMERA_RECORDINGS_ROOT, camera_id_value), safe_name, as_attachment=True)
 
 
 @app.route("/api/devices/metadata", methods=["POST"])

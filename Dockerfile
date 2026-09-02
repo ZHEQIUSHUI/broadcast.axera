@@ -87,6 +87,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
+        ffmpeg \
         python3 \
         python3-venv \
         iputils-ping \
